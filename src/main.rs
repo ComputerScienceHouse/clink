@@ -1,4 +1,7 @@
-use clap::{Arg, App, SubCommand};
+use clap::{Arg, App, SubCommand, ArgMatches};
+
+pub mod api;
+pub mod commands;
 
 fn main() {
   let matches = App::new("CLI Drink")
@@ -13,10 +16,15 @@ fn main() {
          .takes_value(true))
     .subcommand(SubCommand::with_name("list")
                 .about("Display available slots")).get_matches();
+  process_command(matches);
 }
 
-fn process_command(ArgMatches matches) -> Result<(), ()> {
+fn process_command(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
+  let mut api = api::API::new();
   if let Some(matches) = matches.subcommand_matches("list") {
-    return commands::list::list(matches);
+    return commands::list::list(matches, &mut api);
+  } else {
+    // TODO: Call out to willard's GUI!
+    panic!("cry about it bitch");
   }
 }
