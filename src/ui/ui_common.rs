@@ -1,5 +1,13 @@
 use ncurses::*;
 
+pub fn get_bounds() -> [i32; 2] {
+    /* Get the screen bounds. */
+    let mut max_x = 0;
+    let mut max_y = 0;
+    getmaxyx(stdscr(), &mut max_y, &mut max_x);
+    [max_y, max_x]
+}
+
 pub fn launch() {
     /* Setup ncurses. */
     initscr();
