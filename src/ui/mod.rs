@@ -1,2 +1,2 @@
-pub mod menu;
+pub mod machine;
 pub mod ui_common;
