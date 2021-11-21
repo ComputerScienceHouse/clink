@@ -1,11 +1,11 @@
 use ncurses::*;
 
-pub fn get_bounds() -> [i32; 2] {
+pub fn get_bounds() -> (i32, i32) {
     /* Get the screen bounds. */
     let mut max_x = 0;
     let mut max_y = 0;
     getmaxyx(stdscr(), &mut max_y, &mut max_x);
-    [max_y, max_x]
+    (max_y, max_x)
 }
 
 pub fn launch() {
@@ -40,4 +40,28 @@ pub fn destroy_win(win: WINDOW) {
         wborder(win, ch, ch, ch, ch, ch, ch, ch, ch);
         wrefresh(win);
         delwin(win);
+}
+
+pub fn draw_logo() {
+
+let (max_y, max_x) = get_bounds();
+
+mvprintw(max_y-20, max_x-20, concat!(
+"\n'{tttttttttttttttttttttttt^ *tttt\\ \n",
+":@@@@@@@@@@@@@@@@@@@@@@@@@m d@@@@N`\n",
+":@@@@@@@@@@@@@@@@@@@@@@@@@m d@@@@N`\n",
+":@@@@@m:::::::::::::rQ@@@@m d@@@@N`\n",
+":@@@@@] vBBBBBBBBBN,`]oooo* d@@@@N`\n",
+":@@@@@] o@@@NNNQ@@@\"`ueeee| d@@@@N`\n",
+":@@@@@] o@@&   ,||?`'Q@@@@m d@@@@N`\n",
+":@@@@@] o@@Q]tt{{{z-'Q@@@@QOQ@@@@N`\n",
+":@@@@@] o@@@@@@@@@@\"'Q@@@@@@@@@@@N`\n",
+":@@@@@] ';;;;;;y@@@\"'Q@@@@N7Q@@@@N`\n",
+":@@@@@] \\KKe^^^a@@@\"'Q@@@@m d@@@@N`\n",
+":@@@@@] o@@@@@@@@@@\" _::::' d@@@@N`\n",
+":@@@@@] raaaaaaaaay..H####} d@@@@N`\n",
+":@@@@@#eeeeeeeeeeeeek@@@@@m d@@@@N`\n",
+":@@@@@@@@@@@@@@@@@@@@@@@@@m d@@@@N`\n",
+":@@@@@@@@@@@@@@@@@@@@@@@@@e K@@@@W`\n",
+" .........................` `....-"));
 }

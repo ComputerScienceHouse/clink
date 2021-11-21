@@ -31,6 +31,8 @@ pub fn pick() {
         machines += 1;
     }
 
+    ui_common::draw_logo();
+
 //    mvwprintw(win, 3, 5, "tits");
 
     wrefresh(win);
