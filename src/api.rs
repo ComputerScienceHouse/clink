@@ -1,6 +1,9 @@
 use std::fmt;
 use url::Url;
-use isahc::{Request, auth::Authentication, prelude::*};
+use isahc::{Request, auth::Authentication, prelude::*, HttpClient};
+use serde_json::{Map, Value};
+
+use crate::ui::inventory;
 
 pub struct API {
   token: Option<String>,
@@ -54,3 +57,71 @@ impl API {
     }
   }
 }
+
+pub fn get_machines(api: &mut API) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+  let token = api.get_token()?;
+
+  let client = HttpClient::new()?;
+  let request = Request::get("https://drink.csh.rit.edu/drinks")
+    .header("Authorization", token)
+    .body(())?;
+
+  let mut display_names = Vec::new();
+
+  let drinks: Value = client.send(request)?.json()?;
+  let drinks: &Map<String, Value> = match drinks.as_object() {
+    Some(drinks) => drinks,
+    None => panic!("Fuck")
+  };
+  let machines: &Vec<Value> = match drinks["machines"].as_array() {
+    Some(machines) => machines,
+    None => panic!("Fuck")
+  };
+  for machine in machines {
+    let machine: &Map<String, Value> = match machine.as_object() {
+      Some(machine) => machine,
+      None => panic!("Fuck!")
+    };
+//    eprintln!("Heyy {}", machine["display_name"].as_str().unwrap().to_string());
+    display_names.push(machine["display_name"].as_str().unwrap().to_string());
+  }
+  return Ok(display_names);
+}
+
+//pub fn get_inventory(api: &mut API, machine_index: i32) -> Result<Vec<inventory::Item>, Box<dyn std::error::Error>> {
+//  let token = api.get_token()?;
+//
+//  let client = HttpClient::new()?;
+//  let request = Request::get("https://drink.csh.rit.edu/drinks")
+//    .header("Authorization", token)
+//    .body(())?;
+//
+//  let mut display_names = Vec::new();
+//
+//  let drinks: Value = client.send(request)?.json()?;
+//  let drinks: &Map<String, Value> = match drinks.as_object() {
+//    Some(drinks) => drinks,
+//    None => panic!("Fuck")
+//  };
+//  let machines: &Vec<Value> = match drinks["machines"].as_array() {
+//    Some(machines) => machines,
+//    None => panic!("Fuck")
+//  };
+//
+//  // Fucking bullshit.
+//  let slots: &Vec<Value> = match machines.get(machine_index as usize).as_object()["slots"] {
+//    Some(slots) => slots,
+//    None => panic!("Fuck")
+//  };
+//
+//  for slot in slots {
+//    let slot: &Map<String, Value> = match slot.as_object() {
+//      Some(slot) => slot,
+//      None => panic!("Fuck!")
+//    };
+////    eprintln!("Heyy {}", machine["display_name"].as_str().unwrap().to_string());
+////Item {name: "Coke".to_string(), price: 10}
+//    display_names.push(Item { name: slot["item"]["name"].as_str().unwrap().to_string(), price: 69 });
+//  }
+//  return Ok(display_names);
+//}

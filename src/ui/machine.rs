@@ -3,6 +3,8 @@ use ncurses::*;
 use crate::ui::ui_common;
 use crate::ui::inventory;
 
+use crate::api;
+
 pub fn pick() {
     ui_common::launch();
 
@@ -23,28 +25,34 @@ pub fn pick() {
     mvwprintw(win, 1, 3, "SELECT A MACHINE");
     mvwprintw(win, 2, 2, "================");
 
-    let machines_online = get_machines();
+    let mut api = api::API::new(); // Cheetos.
+    let machines_online = api::get_machines(&mut api);
 
-    let mut machines = 1; // Start printing machines on the 3rd row of the Window.
-    for machine in &machines_online {
-        mvwprintw(win, 2 + machines, 2, format!("{}. {}", machines, machine).as_str());
-        machines += 1;
+    match machines_online {
+        Ok(machine_names) => {
+            let mut machine_count = 1; // Start printing machines on the 3rd row of the Window.
+            for machine in &machine_names {
+                mvwprintw(win, 2 + machine_count, 2, format!("{}. {}", machine_count, machine).as_str());
+                machine_count += 1;
+            }
+
+            ui_common::draw_logo();
+
+        //    mvwprintw(win, 3, 5, "tits");
+
+            wrefresh(win);
+            refresh();
+            let requested_machine = getch();
+            match requested_machine as i32 - 0x30 {
+                1 => inventory::build_menu(&mut api, 1),
+                2 => inventory::build_menu(&mut api, 2),
+                3 => inventory::build_menu(&mut api, 3),
+                _=> panic!("Dude, fucking seriously?")
+            }
+            ui_common::destroy_win(win);
+        },
+        _ => {panic!("You fucking idiot.");}
     }
-
-    ui_common::draw_logo();
-
-//    mvwprintw(win, 3, 5, "tits");
-
-    wrefresh(win);
-    refresh();
-    let requested_machine = getch();
-    match requested_machine as i32 - 0x30 {
-        1 => inventory::build_menu(),
-        2 => inventory::build_menu(),
-        3 => inventory::build_menu(),
-        _=> panic!("Dude, fucking seriously?")
-    }
-    ui_common::destroy_win(win);
 }
 
 fn get_machines() -> Vec<String> {
