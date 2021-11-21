@@ -3,6 +3,8 @@ use clap::{Arg, App, SubCommand, ArgMatches};
 pub mod api;
 pub mod commands;
 
+mod ui;
+
 fn main() {
   let matches = App::new("CLI Drink")
     .version("1.0.0")
