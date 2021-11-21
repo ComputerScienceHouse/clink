@@ -33,6 +33,9 @@ fn process_command(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>
     return commands::list::list(matches, &mut api);
   } else {
     // TODO: Call out to willard's GUI!
-    panic!("cry about it bitch");
+    ui::ui_common::launch();
+    ui::machine::pick();
+    ui::ui_common::end();
+    Ok(())
   }
 }
