@@ -16,7 +16,10 @@ fn main() {
          .takes_value(true))
     .subcommand(SubCommand::with_name("list")
                 .about("Display available slots")).get_matches();
-  process_command(matches);
+  match process_command(matches) {
+    Ok(_) => {}
+    Err(err) => println!("{}", err),
+  }
 }
 
 fn process_command(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
