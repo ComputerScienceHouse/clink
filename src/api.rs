@@ -49,8 +49,7 @@ impl API {
             return Ok(value.to_string());
           }
         }
-        // yolo?
-        panic!("Why no????");
+        return Err(Box::new(APIError::BadFormat));
       }
     }
   }

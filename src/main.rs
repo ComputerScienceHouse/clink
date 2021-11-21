@@ -15,7 +15,10 @@ fn main() {
          .help("Selects machine to perform operation on")
          .takes_value(true))
     .subcommand(SubCommand::with_name("list")
-                .about("Display available slots")).get_matches();
+                .about("Display available slots"))
+    .subcommand(SubCommand::with_name("drop")
+                .about("Drops a drink"))
+    .get_matches();
   match process_command(matches) {
     Ok(_) => {}
     Err(err) => println!("{}", err),
