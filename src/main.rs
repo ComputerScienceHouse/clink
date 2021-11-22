@@ -3,6 +3,8 @@ use clap::{Arg, App, SubCommand, ArgMatches};
 pub mod api;
 pub mod commands;
 
+mod ui;
+
 fn main() {
   let matches = App::new("CLI Drink")
     .version("1.0.0")
@@ -30,7 +32,9 @@ fn process_command(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>
   if let Some(matches) = matches.subcommand_matches("list") {
     return commands::list::list(matches, &mut api);
   } else {
-    // TODO: Call out to willard's GUI!
-    panic!("cry about it bitch");
+    ui::ui_common::launch();
+    ui::machine::pick();
+    ui::ui_common::end();
+    Ok(())
   }
 }

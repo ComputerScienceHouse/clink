@@ -10,6 +10,7 @@ clap = "2.33.3"
 url = "2.2.2"
 serde_json = "1.0.71"
 serde = "1.0.130"
+ncurses = "5.101.0"
 
 [dependencies.isahc]
 version = "1.6.0"
