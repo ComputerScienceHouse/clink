@@ -1,4 +1,4 @@
-use clap::{Arg, App, SubCommand, ArgMatches};
+use clap::{App, Arg, ArgMatches, SubCommand};
 
 pub mod api;
 pub mod commands;
@@ -10,16 +10,16 @@ fn main() {
     .version("1.0.0")
     .author("Mary Strodl <mstrodl@csh.rit.edu>")
     .about("Drops drinks from CSH vending machines")
-    .arg(Arg::with_name("machine")
-         .short("m")
-         .long("machine")
-         .value_name("NAME")
-         .help("Selects machine to perform operation on")
-         .takes_value(true))
-    .subcommand(SubCommand::with_name("list")
-                .about("Display available slots"))
-    .subcommand(SubCommand::with_name("drop")
-                .about("Drops a drink"))
+    .arg(
+      Arg::with_name("machine")
+        .short("m")
+        .long("machine")
+        .value_name("NAME")
+        .help("Selects machine to perform operation on")
+        .takes_value(true),
+    )
+    .subcommand(SubCommand::with_name("list").about("Display available slots"))
+    .subcommand(SubCommand::with_name("drop").about("Drops a drink"))
     .get_matches();
   match process_command(matches) {
     Ok(_) => {}
