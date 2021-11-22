@@ -40,11 +40,6 @@ pub fn build_menu(api: &mut api::API, machine_index: i32) {
     mvwprintw(win, 2, 2, "================");
 
     let inventory: Vec<Item> = api::API::get_inventory(api, machine_index).unwrap();
-
-    // Dummy function because the above is broken. Also I was rly tired when I wrote the below code
-    // so all the variable names are wrong lolololol
-//    let machines_online = get_inventory();
-
     
     let mut slot_count = 1; // Start printing machines on the 3rd row of the Window.
     for slot in inventory.iter() {
@@ -52,24 +47,14 @@ pub fn build_menu(api: &mut api::API, machine_index: i32) {
         slot_count += 1;
     }
 
+    // TODO: Get real amt of credits.
     mvwprintw(win, height-3, width-20, "Credits: 69420");
-
-//    mvwprintw(win, 3, 5, "tits");
 
     wrefresh(win);
     refresh();
     let requested_machine = getch();
-/*    match requested_machine as i32 - 0x30 {
-        1 => panic!("Damb fuck, sheeeeesh."),
-        2 => panic!("Damb fuck, sheeeeesh."),
-        3 => panic!("Damb fuck, sheeeeesh."),
-        _=> panic!("Dude, fucking seriously?")
-    }
-*/
+    //TODO: something. Drop drink I guess.
     ui_common::destroy_win(win);
 
 }
 
-fn get_inventory() -> Vec<Item> {
-    vec![Item {name: "Coke".to_string(), price: 10}, Item {name: "Morning Brew".to_string(), price: 25}, Item {name: "ligma".to_string(), price: 69}]
-}

@@ -26,6 +26,9 @@ pub fn pick() {
     mvwprintw(win, 1, 3, "Loading...");
     wrefresh(win);
 
+    // I wanna draw the menu _over_ the logo, so that comes first.
+    ui_common::draw_logo();
+
     mvwprintw(win, 1, 3, "SELECT A MACHINE");
     mvwprintw(win, 2, 2, "================");
 
@@ -40,26 +43,13 @@ pub fn pick() {
                 machine_count += 1;
             }
 
-            ui_common::draw_logo();
-
-        //    mvwprintw(win, 3, 5, "tits");
-
             wrefresh(win);
             refresh();
             let requested_machine = getch();
-            match requested_machine as i32 - 0x30 {
-                1 => inventory::build_menu(&mut api, 1),
-                2 => inventory::build_menu(&mut api, 2),
-                3 => inventory::build_menu(&mut api, 3),
-                _=> {endwin();panic!("Dude, fucking seriously?");} 
-
-            }
+            inventory::build_menu(&mut api, requested_machine as i32 - 0x30);
             ui_common::destroy_win(win);
         },
         _ => {endwin(); panic!("You fucking idiot.");}
     }
 }
 
-fn get_machines() -> Vec<String> {
-    vec!["Big Drink".to_string(), "Little Drink".to_string(), "Snack".to_string()]
-}
