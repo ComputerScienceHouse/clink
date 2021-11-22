@@ -6,6 +6,7 @@ use std::any::Any;
 use serde_json::{Map, Value};
 
 use crate::api::API;
+use crate::api::APIError;
 
 pub fn list(matches: &ArgMatches<'_>, api: &mut API) -> Result<(), Box<dyn std::error::Error>> {
   let token = api.get_token()?;
@@ -29,7 +30,32 @@ pub fn list(matches: &ArgMatches<'_>, api: &mut API) -> Result<(), Box<dyn std::
       Some(machine) => machine,
       None => panic!("Fuck!")
     };
-    println!("Heyy {}", machine["display_name"].as_str().unwrap().to_string());
+    let display_name = match machine["display_name"].as_str() {
+      Some(name) => name.to_string(),
+      None => return Err(Box::new(APIError::BadFormat)),
+    };
+    println!("{}", display_name);
+    println!("{}", "=".repeat(display_name.len()));
+    let slots: &Vec<Value> = match machine["slots"].as_array() {
+      Some(slots) => slots,
+      None => return Err(Box::new(APIError::BadFormat)),
+    };
+    for slot in slots {
+      let slot: &Map<String, Value> = match slot.as_object() {
+        Some(slot) => slot,
+        None => return Err(Box::new(APIError::BadFormat)),
+      };
+
+      let item: &Map<String, Value> = match slot["item"].as_object() {
+        Some(item) => item,
+        None => return Err(Box::new(APIError::BadFormat)),
+      };
+
+      let price = item["price"].as_u64().unwrap();
+      let slot_number = slot["number"].as_u64().unwrap();
+      let name = item["name"].as_str().unwrap();
+      println!("{}. {} ({} Credits)", slot_number, name, price);
+    }
   }
   return Ok(());
 }
