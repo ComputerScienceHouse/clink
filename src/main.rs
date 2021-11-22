@@ -32,7 +32,6 @@ fn process_command(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>
   if let Some(matches) = matches.subcommand_matches("list") {
     return commands::list::list(matches, &mut api);
   } else {
-    // TODO: Call out to willard's GUI!
     ui::ui_common::launch();
     ui::machine::pick();
     ui::ui_common::end();

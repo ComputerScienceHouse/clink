@@ -27,11 +27,13 @@ impl fmt::Display for APIError {
 }
 
 impl API {
+
   pub fn new() -> API {
     return API {
       token: None
     };
   }
+
   pub fn get_token(self: &mut API) -> Result<String, Box<dyn std::error::Error>> {
     return match &self.token {
       Some(token) => Ok(token.to_string()),
@@ -56,72 +58,88 @@ impl API {
       }
     }
   }
+
+    pub fn get_machines(self: &mut API) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+        let token = self.get_token()?;
+
+        let client = HttpClient::new()?;
+        let request = Request::get("https://drink.csh.rit.edu/drinks")
+          .header("Authorization", token)
+          .body(())?;
+
+        let mut display_names = Vec::new();
+
+        let drinks: Value = client.send(request)?.json()?;
+        let drinks: &Map<String, Value> = match drinks.as_object() {
+          Some(drinks) => drinks,
+          None => panic!("Fuck")
+        };
+        let machines: &Vec<Value> = match drinks["machines"].as_array() {
+          Some(machines) => machines,
+          None => panic!("Fuck")
+        };
+        for machine in machines {
+          let machine: &Map<String, Value> = match machine.as_object() {
+            Some(machine) => machine,
+            None => panic!("Fuck!")
+          };
+          display_names.push(machine["display_name"].as_str().unwrap().to_string());
+        }
+        return Ok(display_names);
+    }
+
+    pub fn get_inventory(
+        self: &mut API, 
+        machine_index: i32
+        ) -> Result<Vec<inventory::Item>, Box<dyn std::error::Error>> {
+
+        let token = self.get_token()?;
+
+        let client = HttpClient::new()?;
+        let request = Request::get("https://drink.csh.rit.edu/drinks")
+          .header("Authorization", token)
+          .body(())?;
+
+        let drinks: Value = client.send(request)?.json()?;
+        let drinks: &Map<String, Value> = match drinks.as_object() {
+          Some(drinks) => drinks,
+          None => panic!("Fuck")
+        };
+        
+
+        let machines: &Vec<Value> = match drinks["machines"].as_array() {
+          Some(machines) => machines,
+          None => panic!("Fuck")
+        };
+
+        //let machines Vec<&Map<String, Value>> = Vec::new();
+        //for machine in machines {
+        //  let machine: &Map<String, Value> = match machine.as_object() {
+        //    Some(machine) => machine,
+        //    None => panic!("Fuck!")
+        //  };
+        //  machines.push(machine);
+//      //    display_names.push(machine["display_name"].as_str().unwrap().to_string());
+        //}
+
+        let selected_machine = machines[machine_index as usize].clone();
+        let  mut slots: Vec<inventory::Item> = Vec::new();
+/*        println!("ARRRGH!!!");
+        println!("{:?}", selected_machine);
+        println!("=======");*/
+        for object in selected_machine["slots"].as_array().unwrap() {
+//            println!("THIS IS SCUFFED!!!!!!!!!!!!!!!!!!!!!!!!!!");
+//            println!("{}", object["item"]["name"].as_str().unwrap());
+            //println!("{:?}", object);
+            slots.push(inventory::Item{
+                name: object["item"]["name"].to_string(),
+                price: object["item"]["price"].as_i64().unwrap() as i32
+            });
+            /*
+            slots.push(inventory::Item{
+                name: "Ligma".to_string(),
+                price: 69420 
+            });*/
+        }
+        return Ok(slots);    }
 }
-
-pub fn get_machines(api: &mut API) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-  let token = api.get_token()?;
-
-  let client = HttpClient::new()?;
-  let request = Request::get("https://drink.csh.rit.edu/drinks")
-    .header("Authorization", token)
-    .body(())?;
-
-  let mut display_names = Vec::new();
-
-  let drinks: Value = client.send(request)?.json()?;
-  let drinks: &Map<String, Value> = match drinks.as_object() {
-    Some(drinks) => drinks,
-    None => panic!("Fuck")
-  };
-  let machines: &Vec<Value> = match drinks["machines"].as_array() {
-    Some(machines) => machines,
-    None => panic!("Fuck")
-  };
-  for machine in machines {
-    let machine: &Map<String, Value> = match machine.as_object() {
-      Some(machine) => machine,
-      None => panic!("Fuck!")
-    };
-//    eprintln!("Heyy {}", machine["display_name"].as_str().unwrap().to_string());
-    display_names.push(machine["display_name"].as_str().unwrap().to_string());
-  }
-  return Ok(display_names);
-}
-
-//pub fn get_inventory(api: &mut API, machine_index: i32) -> Result<Vec<inventory::Item>, Box<dyn std::error::Error>> {
-//  let token = api.get_token()?;
-//
-//  let client = HttpClient::new()?;
-//  let request = Request::get("https://drink.csh.rit.edu/drinks")
-//    .header("Authorization", token)
-//    .body(())?;
-//
-//  let mut display_names = Vec::new();
-//
-//  let drinks: Value = client.send(request)?.json()?;
-//  let drinks: &Map<String, Value> = match drinks.as_object() {
-//    Some(drinks) => drinks,
-//    None => panic!("Fuck")
-//  };
-//  let machines: &Vec<Value> = match drinks["machines"].as_array() {
-//    Some(machines) => machines,
-//    None => panic!("Fuck")
-//  };
-//
-//  // Fucking bullshit.
-//  let slots: &Vec<Value> = match machines.get(machine_index as usize).as_object()["slots"] {
-//    Some(slots) => slots,
-//    None => panic!("Fuck")
-//  };
-//
-//  for slot in slots {
-//    let slot: &Map<String, Value> = match slot.as_object() {
-//      Some(slot) => slot,
-//      None => panic!("Fuck!")
-//    };
-////    eprintln!("Heyy {}", machine["display_name"].as_str().unwrap().to_string());
-////Item {name: "Coke".to_string(), price: 10}
-//    display_names.push(Item { name: slot["item"]["name"].as_str().unwrap().to_string(), price: 69 });
-//  }
-//  return Ok(display_names);
-//}

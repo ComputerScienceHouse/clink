@@ -4,9 +4,10 @@ use crate::ui::ui_common;
 
 use crate::api;
 
-struct Item {
-    name: String,
-    price: i32
+#[derive(Debug)]
+pub struct Item {
+    pub name: String,
+    pub price: i32
 }
 
 impl Item {
@@ -19,7 +20,6 @@ impl Item {
 }
 
 pub fn build_menu(api: &mut api::API, machine_index: i32) {
-
     /* Get the screen bounds. */
     let mut max_x = 0;
     let mut max_y = 0;
@@ -32,19 +32,24 @@ pub fn build_menu(api: &mut api::API, machine_index: i32) {
     let start_x = (max_x - width) / 2;
     let win = ui_common::create_win(start_y, start_x, height, width);
 
+    // Usually the UI needs a second to fetch from the API. Whoops lol
+    mvwprintw(win, 1, 3, "Loading...");
+    wrefresh(win);
+
     mvwprintw(win, 1, 3, "SELECT A DRINK");
     mvwprintw(win, 2, 2, "================");
 
-//    let machines_online = api::get_inventory(api, machine_index);
+    let inventory: Vec<Item> = api::API::get_inventory(api, machine_index).unwrap();
 
     // Dummy function because the above is broken. Also I was rly tired when I wrote the below code
     // so all the variable names are wrong lolololol
-    let machines_online = get_inventory();
+//    let machines_online = get_inventory();
 
-    let mut machines = 1; // Start printing machines on the 3rd row of the Window.
-    for machine in &machines_online {
-        mvwprintw(win, 2 + machines, 2, format!("{}. {} ({})", machines, machine.name, machine.price).as_str());
-        machines += 1;
+    
+    let mut slot_count = 1; // Start printing machines on the 3rd row of the Window.
+    for slot in inventory.iter() {
+        mvwprintw(win, 2 + slot_count, 2, format!("{}. {} ({})", slot_count, slot.name, slot.price).as_str());
+        slot_count += 1;
     }
 
     mvwprintw(win, height-3, width-20, "Credits: 69420");
@@ -61,8 +66,8 @@ pub fn build_menu(api: &mut api::API, machine_index: i32) {
         _=> panic!("Dude, fucking seriously?")
     }
 */
-
     ui_common::destroy_win(win);
+
 }
 
 fn get_inventory() -> Vec<Item> {

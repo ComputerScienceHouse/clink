@@ -22,11 +22,15 @@ pub fn pick() {
     let start_x = (max_x - width) / 2;
     let win = ui_common::create_win(start_y, start_x, height, width);
 
+    // The API needs a sec...
+    mvwprintw(win, 1, 3, "Loading...");
+    wrefresh(win);
+
     mvwprintw(win, 1, 3, "SELECT A MACHINE");
     mvwprintw(win, 2, 2, "================");
 
     let mut api = api::API::new(); // Cheetos.
-    let machines_online = api::get_machines(&mut api);
+    let machines_online = api::API::get_machines(&mut api);
 
     match machines_online {
         Ok(machine_names) => {
@@ -47,11 +51,12 @@ pub fn pick() {
                 1 => inventory::build_menu(&mut api, 1),
                 2 => inventory::build_menu(&mut api, 2),
                 3 => inventory::build_menu(&mut api, 3),
-                _=> panic!("Dude, fucking seriously?")
+                _=> {endwin();panic!("Dude, fucking seriously?");} 
+
             }
             ui_common::destroy_win(win);
         },
-        _ => {panic!("You fucking idiot.");}
+        _ => {endwin(); panic!("You fucking idiot.");}
     }
 }
 
