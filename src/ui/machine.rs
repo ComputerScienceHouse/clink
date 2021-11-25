@@ -28,9 +28,10 @@ pub fn pick() {
 
   // I wanna draw the menu _over_ the logo, so that comes first.
   ui_common::draw_logo();
+  ui_common::print_instructions();
   box_(win, 0, 0);
 
-  mvwprintw(win, 1, 3, "SELECT A MACHINE");
+  mvwprintw(win, 1, 2, "SELECT A MACHINE");
   mvwprintw(win, 2, 2, "================");
 
   let mut api = api::API::new(); // Cheetos.
@@ -74,8 +75,11 @@ pub fn pick() {
                 refresh();
                 wrefresh(win);
             },
-            _ => {
+            KEY_LEFT => {
                 break;
+            },
+            _ => {
+                refresh();
             }
         }
 

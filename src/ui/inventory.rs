@@ -83,45 +83,48 @@ pub fn build_menu(api: &mut api::API, machine_index: i32) {
       loop {
         match key {
             KEY_UP => {
-                if selected_slot > 0 {
-                    selected_slot -= 1;
-                }
+              if selected_slot > 0 {
+                selected_slot -= 1;
+              }
             },
             KEY_DOWN => {
-                if selected_slot < slot_count as i32 - 1 {
-                    selected_slot += 1;
-                }
+              if selected_slot < slot_count as i32 - 1 {
+                selected_slot += 1;
+              }
             },
-            KEY_RIGHT => {
-                //inventory::build_menu(&mut api, selected_machine);
-                if !slots[selected_slot as usize].empty {
-                  vend(api, selected_slot);
-                }
-                else {
-                  deny();
-                }
+            KEY_RIGHT => { 
+              //inventory::build_menu(&mut api, selected_machine);
+              if !slots[selected_slot as usize].empty {
+                vend(api, selected_slot);
+              }
+              else {
+                deny();
+              }
+            },
+            KEY_LEFT => {
+              ui_common::destroy_win(win);
+              return;
             },
             _ => {
-                ui_common::destroy_win(win);
-                return;
+              refresh();
             }
         }
         
         for n in 0..slot_count {
-            if n as i32 == selected_slot {
-                wattron(win, A_REVERSE());
-            }
-            if slots[n].empty {
-              //wattron(win, A_DIM());
-              wattron(win, COLOR_PAIR(1));
-            }
-            mvwprintw(
-                win, 3 + n as i32, 2,
-                format!("{} ({} credits)", slots[n].name, slots[n].price).as_str(),
-            );
-            //wattroff(win, A_DIM());
-            wattroff(win, COLOR_PAIR(1));
-            wattroff(win, A_REVERSE());
+          if n as i32 == selected_slot {
+            wattron(win, A_REVERSE());
+          }
+          if slots[n].empty {
+            //wattron(win, A_DIM());
+            wattron(win, COLOR_PAIR(1));
+          }
+          mvwprintw(
+            win, 3 + n as i32, 2,
+            format!("{} ({} credits)", slots[n].name, slots[n].price).as_str(),
+          );
+          //wattroff(win, A_DIM());
+          wattroff(win, COLOR_PAIR(1));
+          wattroff(win, A_REVERSE());
         }
 
         refresh();

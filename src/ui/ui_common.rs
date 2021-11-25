@@ -20,6 +20,7 @@ pub fn launch() {
   /* Invisible cursor. */
   curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
 
+  /* Colors. */
   do_color();
   attron(COLOR_PAIR(2));
 
@@ -72,6 +73,11 @@ pub fn draw_logo() {
       " .........................` `....-"
     ),
   );
+}
+
+pub fn print_instructions() {  
+  let (max_y, max_x) = get_bounds();
+  mvprintw(max_y - 2, max_x - 31, "Use the ARROW KEYS to navigate."); 
 }
 
 pub fn do_color() {
