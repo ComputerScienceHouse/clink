@@ -148,9 +148,15 @@ impl API {
     let selected_machine = machines[machine_index as usize].clone();
     let mut slots: Vec<inventory::Item> = Vec::new();
     for object in selected_machine["slots"].as_array().unwrap() {
+        
+      let empty: bool = match object["item"]["name"].as_str() {
+        Some("Empty") => true,
+        _ => false
+      };
       slots.push(inventory::Item {
         name: object["item"]["name"].to_string(),
         price: object["item"]["price"].as_i64().unwrap() as i32,
+        empty: empty
       });
     }
     return Ok(slots);

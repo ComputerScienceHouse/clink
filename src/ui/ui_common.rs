@@ -20,6 +20,9 @@ pub fn launch() {
   /* Invisible cursor. */
   curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
 
+  do_color();
+  attron(COLOR_PAIR(2));
+
   /* Update the screen. */
   refresh();
 }
@@ -37,6 +40,7 @@ pub fn create_win(y: i32, x: i32, height: i32, width: i32) -> WINDOW {
 
 pub fn destroy_win(win: WINDOW) {
   let ch = ' ' as chtype;
+  werase(win);
   wborder(win, ch, ch, ch, ch, ch, ch, ch, ch);
   wrefresh(win);
   delwin(win);
@@ -68,4 +72,11 @@ pub fn draw_logo() {
       " .........................` `....-"
     ),
   );
+}
+
+pub fn do_color() {
+  /* Start colors. */
+  start_color();
+  init_pair(1, COLOR_RED, COLOR_BLACK);  
+  init_pair(2, COLOR_WHITE, COLOR_BLACK);  
 }
