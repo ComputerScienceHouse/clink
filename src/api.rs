@@ -1,4 +1,6 @@
+use http::status::StatusCode;
 use isahc::{auth::Authentication, prelude::*, HttpClient, Request};
+use serde_json::json;
 use serde_json::{Map, Value};
 use std::fmt;
 use url::Url;
@@ -20,8 +22,8 @@ impl std::error::Error for APIError {}
 impl fmt::Display for APIError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     return f.write_str(match self {
-      Unauthorized => "Unauthorized (Did your Kerberos ticket expire?: `kinit`)",
-      BadFormat => "BadFormat (The server sent data we didn't understand)",
+      APIError::Unauthorized => "Unauthorized (Did your Kerberos ticket expire?: `kinit`)",
+      APIError::BadFormat => "BadFormat (The server sent data we didn't understand)",
     });
   }
 }
@@ -30,7 +32,30 @@ impl API {
   pub fn new() -> API {
     return API { token: None };
   }
+  pub fn drop(self: &mut API, machine: String, slot: u8) -> Result<(), Box<dyn std::error::Error>> {
+    let token = self.get_token()?;
 
+    let client = HttpClient::new()?;
+    let request = Request::post("https://drink.csh.rit.edu/drinks/drop")
+      .header("Content-Type", "application/json")
+      .header("Authorization", token)
+      .body(
+        json!({
+          "machine": machine,
+          "slot": slot,
+        })
+        .to_string(),
+      )?;
+    let mut response = client.send(request)?;
+    let body: Value = response.json()?;
+    return match response.status() {
+      StatusCode::OK => Ok(()),
+      _ => {
+        eprintln!("Couldn't drop: {}", body["error"].as_str().unwrap());
+        return Err(Box::new(APIError::BadFormat));
+      }
+    };
+  }
   pub fn get_token(self: &mut API) -> Result<String, Box<dyn std::error::Error>> {
     return match &self.token {
       Some(token) => Ok(token.to_string()),

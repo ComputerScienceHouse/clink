@@ -1,7 +1,5 @@
 use clap::ArgMatches;
-use isahc::error::Error;
 use isahc::{HttpClient, ReadResponseExt, Request};
-use std::any::Any;
 
 use serde_json::{Map, Value};
 
@@ -12,18 +10,27 @@ pub fn list(matches: &ArgMatches<'_>, api: &mut API) -> Result<(), Box<dyn std::
   let token = api.get_token()?;
 
   let client = HttpClient::new()?;
-  let request = Request::get("https://drink.csh.rit.edu/drinks")
-    .header("Authorization", token)
-    .body(())?;
+  let mut url = "https://drink.csh.rit.edu/drinks".to_string();
+  if let Some(machine) = matches.value_of("machine") {
+    url += "?machine=";
+    url += machine;
+  }
+  let request = Request::get(url).header("Authorization", token).body(())?;
 
   let drinks: Value = client.send(request)?.json()?;
   let drinks: &Map<String, Value> = match drinks.as_object() {
     Some(drinks) => drinks,
     None => panic!("Fuck"),
   };
-  let machines: &Vec<Value> = match drinks["machines"].as_array() {
-    Some(machines) => machines,
-    None => panic!("Fuck"),
+  let machines: &Vec<Value> = match drinks.get("machines") {
+    Some(machines) => match machines.as_array() {
+      Some(machines) => machines,
+      None => return Err(Box::new(APIError::BadFormat)),
+    },
+    None => {
+      eprintln!("Couldn't fetch machines! {:?}", drinks);
+      return Err(Box::new(APIError::BadFormat));
+    }
   };
   for machine in machines {
     let machine: &Map<String, Value> = match machine.as_object() {
@@ -54,7 +61,11 @@ pub fn list(matches: &ArgMatches<'_>, api: &mut API) -> Result<(), Box<dyn std::
       let price = item["price"].as_u64().unwrap();
       let slot_number = slot["number"].as_u64().unwrap();
       let name = item["name"].as_str().unwrap();
-      println!("{}. {} ({} Credits)", slot_number, name, price);
+      print!("{}. {} ({} Credits)", slot_number, name, price);
+      if slot["empty"].as_bool().unwrap() {
+        print!(" [EMPTY]");
+      }
+      println!("");
     }
   }
   return Ok(());

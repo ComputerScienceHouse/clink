@@ -95,6 +95,7 @@ name = "clidrink"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "http",
  "isahc",
  "ncurses",
  "serde",

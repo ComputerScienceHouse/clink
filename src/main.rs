@@ -10,16 +10,32 @@ fn main() {
     .version("1.0.0")
     .author("Mary Strodl <mstrodl@csh.rit.edu>")
     .about("Drops drinks from CSH vending machines")
-    .arg(
-      Arg::with_name("machine")
-        .short("m")
-        .long("machine")
-        .value_name("NAME")
-        .help("Selects machine to perform operation on")
-        .takes_value(true),
+    .subcommand(
+      SubCommand::with_name("list")
+        .about("Display available slots")
+        .arg(
+          Arg::with_name("machine")
+            .index(1)
+            .help("Which machine should be listed?")
+            .required(false),
+        ),
     )
-    .subcommand(SubCommand::with_name("list").about("Display available slots"))
-    .subcommand(SubCommand::with_name("drop").about("Drops a drink"))
+    .subcommand(
+      SubCommand::with_name("drop")
+        .about("Drops a drink")
+        .arg(
+          Arg::with_name("machine")
+            .index(1)
+            .help("Machine to drop from")
+            .required(true),
+        )
+        .arg(
+          Arg::with_name("slot")
+            .index(2)
+            .help("Slot to drop from")
+            .required(true),
+        ),
+    )
     .get_matches();
   match process_command(matches) {
     Ok(_) => {}
@@ -31,10 +47,16 @@ fn process_command(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>
   let mut api = api::API::new();
   if let Some(matches) = matches.subcommand_matches("list") {
     return commands::list::list(matches, &mut api);
+  } else if let Some(matches) = matches.subcommand_matches("drop") {
+    return commands::drop::drop(matches, &mut api);
   } else {
-    ui::ui_common::launch();
-    ui::machine::pick();
-    ui::ui_common::end();
-    Ok(())
+    cli();
+    return Ok(());
   }
+}
+
+fn cli() {
+  ui::ui_common::launch();
+  ui::machine::pick();
+  ui::ui_common::end();
 }
