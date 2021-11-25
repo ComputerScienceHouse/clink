@@ -48,7 +48,8 @@ pub fn build_menu(api: &mut api::API, machine_index: i32) {
         slot_count += 1;
       }
       // TODO: Get real amt of credits.
-      mvwprintw(win, height - 3, width - 20, "Credits: 69420");
+      let credits = api::API::get_credits(api);
+      mvwprintw(win, height - 3, width - 20, format!("Credits: {}", credits.unwrap()).as_str());
       wrefresh(win);
       refresh();
       let requested_machine = getch();
