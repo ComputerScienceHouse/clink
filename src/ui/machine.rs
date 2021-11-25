@@ -40,9 +40,7 @@ pub fn pick() {
       let mut machine_count = 1; // Start printing machines on the 3rd row of the Window.
       for machine in &machine_names {
         mvwprintw(
-          win,
-          2 + machine_count,
-          2,
+          win, 2 + machine_count, 2,
           format!("{}. {}", machine_count, machine).as_str(),
         );
         machine_count += 1;
@@ -51,12 +49,12 @@ pub fn pick() {
       wrefresh(win);
       refresh();
       let requested_machine = getch();
-      inventory::build_menu(&mut api, requested_machine as i32 - 0x30);
+      inventory::build_menu(&mut api, requested_machine as i32 - 0x30 - 1); // -1 to start at zero
       ui_common::destroy_win(win);
     }
     _ => {
       endwin();
-      panic!("You fucking idiot.");
+      panic!("Could not fetch active machines.");
     }
   }
 }

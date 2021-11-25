@@ -36,25 +36,28 @@ pub fn build_menu(api: &mut api::API, machine_index: i32) {
   mvwprintw(win, 1, 3, "SELECT A DRINK");
   mvwprintw(win, 2, 2, "================");
 
-  let inventory: Vec<Item> = api::API::get_inventory(api, machine_index).unwrap();
-
-  let mut slot_count = 1; // Start printing machines on the 3rd row of the Window.
-  for slot in inventory.iter() {
-    mvwprintw(
-      win,
-      2 + slot_count,
-      2,
-      format!("{}. {} ({})", slot_count, slot.name, slot.price).as_str(),
-    );
-    slot_count += 1;
+  let inventory = api::API::get_inventory(api, machine_index);
+  match inventory {
+    Ok(slots) => {
+      let mut slot_count = 1; // Start printing machines on the 3rd row of the Window.
+      for slot in slots.iter() {
+        mvwprintw(
+          win, 2 + slot_count, 2,
+          format!("{}. {} ({})", slot_count, slot.name, slot.price).as_str(),
+        );
+        slot_count += 1;
+      }
+      // TODO: Get real amt of credits.
+      mvwprintw(win, height - 3, width - 20, "Credits: 69420");
+      wrefresh(win);
+      refresh();
+      let requested_machine = getch();
+      //TODO: something. Drop drink I guess.
+      ui_common::destroy_win(win);
+    },
+    _ => {
+        endwin();
+        panic!("Error: Could not query inventory");
+    }
   }
-
-  // TODO: Get real amt of credits.
-  mvwprintw(win, height - 3, width - 20, "Credits: 69420");
-
-  wrefresh(win);
-  refresh();
-  let requested_machine = getch();
-  //TODO: something. Drop drink I guess.
-  ui_common::destroy_win(win);
 }

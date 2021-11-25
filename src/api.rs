@@ -121,6 +121,8 @@ impl API {
       .header("Authorization", token)
       .body(())?;
 
+    // TODO: There's a better way to handle these. You could just
+    // Unwrap them, or do something else.
     let drinks: Value = client.send(request)?.json()?;
     let drinks: &Map<String, Value> = match drinks.as_object() {
       Some(drinks) => drinks,
@@ -132,34 +134,15 @@ impl API {
       None => panic!("Fuck"),
     };
 
-    //let machines Vec<&Map<String, Value>> = Vec::new();
-    //for machine in machines {
-    //  let machine: &Map<String, Value> = match machine.as_object() {
-    //    Some(machine) => machine,
-    //    None => panic!("Fuck!")
-    //  };
-    //  machines.push(machine);
-    //      //    display_names.push(machine["display_name"].as_str().unwrap().to_string());
-    //}
-
     let selected_machine = machines[machine_index as usize].clone();
     let mut slots: Vec<inventory::Item> = Vec::new();
-    /*        println!("ARRRGH!!!");
-    println!("{:?}", selected_machine);
-    println!("=======");*/
     for object in selected_machine["slots"].as_array().unwrap() {
-      //            println!("THIS IS SCUFFED!!!!!!!!!!!!!!!!!!!!!!!!!!");
-      //            println!("{}", object["item"]["name"].as_str().unwrap());
-      //println!("{:?}", object);
-      slots.push(inventory::Item {
-        name: object["item"]["name"].to_string(),
-        price: object["item"]["price"].as_i64().unwrap() as i32,
-      });
-      /*
-      slots.push(inventory::Item{
-          name: "Ligma".to_string(),
-          price: 69420
-      });*/
+      if object["item"]["name"].as_str() != Some("Empty") {
+        slots.push(inventory::Item {
+          name: object["item"]["name"].to_string(),
+          price: object["item"]["price"].as_i64().unwrap() as i32,
+        });
+      }
     }
     return Ok(slots);
   }
