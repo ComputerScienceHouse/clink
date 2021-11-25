@@ -37,19 +37,68 @@ pub fn pick() {
 
   match machines_online {
     Ok(machine_names) => {
-      let mut machine_count = 1; // Start printing machines on the 3rd row of the Window.
-      for machine in &machine_names {
+      let mut machine_count = machine_names.len(); // Start printing machines on the 3rd row of the Window.
+      let mut selected_machine: i32 = 0;
+      
+         for n in 0..machine_count {
+            if n as i32 == selected_machine {
+                wattron(win, A_REVERSE());
+            }
+
         mvwprintw(
-          win, 2 + machine_count, 2,
-          format!("{}. {}", machine_count, machine).as_str(),
+          win, 3 + n as i32, 2,
+          machine_names[n].as_str()
         );
-        machine_count += 1;
+        wattroff(win, A_REVERSE());
+        }
+
+     
+      refresh();
+      wrefresh(win);
+      //let requested_machine = getch();
+    
+      let mut key = getch();
+      loop {
+
+        match key {
+            KEY_UP => {
+                if selected_machine > 0 {
+                    selected_machine -= 1;
+                }
+            },
+            KEY_DOWN => {
+                if selected_machine < machine_count as i32 - 1 {
+                    selected_machine += 1;
+                }
+
+            },
+            KEY_RIGHT => {
+                inventory::build_menu(&mut api, selected_machine);
+            },
+            _ => {
+                break;
+            }
+        }
+
+         for n in 0..machine_count {
+            if n as i32 == selected_machine {
+                wattron(win, A_REVERSE());
+            }
+
+        mvwprintw(
+          win, 3 + n as i32, 2,
+          machine_names[n].as_str()
+        );
+        wattroff(win, A_REVERSE());
+        }
+
+        refresh();
+        wrefresh(win);
+
+        key = getch(); 
       }
 
-      wrefresh(win);
-      refresh();
-      let requested_machine = getch();
-      inventory::build_menu(&mut api, requested_machine as i32 - 0x30 - 1); // -1 to start at zero
+      //inventory::build_menu(&mut api, requested_machine as i32 - 0x30 - 1); // -1 to start at zero
       ui_common::destroy_win(win);
     }
     _ => {

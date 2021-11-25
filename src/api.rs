@@ -84,6 +84,7 @@ impl API {
   pub fn get_credits(self: &mut API) -> Result<u64, Box<dyn std::error::Error>> {
     let token = self.get_token()?;
     let client = HttpClient::new()?;
+    // Can also be used to get other user information
     let request = Request::get("https://sso.csh.rit.edu/auth/realms/csh/protocol/openid-connect/userinfo")
         .header("Authorization", token)
         .body(())?;
@@ -147,12 +148,10 @@ impl API {
     let selected_machine = machines[machine_index as usize].clone();
     let mut slots: Vec<inventory::Item> = Vec::new();
     for object in selected_machine["slots"].as_array().unwrap() {
-      if object["item"]["name"].as_str() != Some("Empty") {
-        slots.push(inventory::Item {
-          name: object["item"]["name"].to_string(),
-          price: object["item"]["price"].as_i64().unwrap() as i32,
-        });
-      }
+      slots.push(inventory::Item {
+        name: object["item"]["name"].to_string(),
+        price: object["item"]["price"].as_i64().unwrap() as i32,
+      });
     }
     return Ok(slots);
   }
