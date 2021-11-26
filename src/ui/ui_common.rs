@@ -39,6 +39,11 @@ pub fn create_win(y: i32, x: i32, height: i32, width: i32) -> WINDOW {
   win
 }
 
+pub fn refresh_win(win: WINDOW) {
+  box_(win, 0, 0);
+  wrefresh(win);
+}
+
 pub fn destroy_win(win: WINDOW) {
   let ch = ' ' as chtype;
   werase(win);

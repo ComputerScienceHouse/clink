@@ -19,6 +19,7 @@ pub fn pick_machine(api: &mut api::API) {
   // The API needs a sec...
   mvwprintw(win, 1, 2, "Loading...");
   wrefresh(win);
+
   // I wanna draw the menu _over_ the logo, so that comes first.
   ui_common::draw_logo();
   ui_common::print_instructions();
@@ -27,8 +28,14 @@ pub fn pick_machine(api: &mut api::API) {
   mvwprintw(win, 2, 2, "================");
 
   let machine_status = match api::API::get_machine_status(api) {
-      Ok(status) => status,
-      Err(fuck) => panic!("{}", fuck)
+      Ok(status) => {
+          status
+      },
+      Err(fuck) => {
+        ui_common::destroy_win(win);
+        ui_common::end();
+        panic!("Error: Could not query machine status ({})", fuck)
+      }
   };
   let machines_online = parse_machines(&machine_status);
   match machines_online {
@@ -45,7 +52,7 @@ pub fn pick_machine(api: &mut api::API) {
         );
         wattroff(win, A_REVERSE());
       }     
-      wrefresh(win);
+      ui_common::refresh_win(win); 
       let mut key = getch();
       loop {
         match key {
@@ -82,7 +89,8 @@ pub fn pick_machine(api: &mut api::API) {
           );
           wattroff(win, A_REVERSE());
         }
-        wrefresh(win);
+
+        ui_common::refresh_win(win); 
         key = getch(); 
       }
       ui_common::destroy_win(win);

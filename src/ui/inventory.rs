@@ -31,10 +31,12 @@ pub fn build_menu(api: &mut api::API, machine_status: &Value, machine_index: i32
   mvwprintw(win, 1, 3, "Loading...");
   wrefresh(win);
 
-  mvwprintw(win, 1, 3, "SELECT A DRINK");
-  mvwprintw(win, 2, 2, "================");
-
+  let machine_name = parse_machine_name(&machine_status, machine_index).unwrap();
   let inventory = parse_inventory(&machine_status, machine_index);
+
+  mvwprintw(win, 1, 3, format!("{} -> SELECT A DRINK", machine_name).as_str());
+  mvwprintw(win, 2, 2, "==========================");
+
   match inventory {
     Ok(slots) => {
       // TODO: Get real amt of credits.
@@ -84,7 +86,10 @@ pub fn build_menu(api: &mut api::API, machine_status: &Value, machine_index: i32
             KEY_RIGHT => { 
               //inventory::build_menu(&mut api, selected_machine);
               if !slots[selected_slot as usize].empty {
-                vend(api, selected_slot);
+                match api.drop(machine_name.clone(), selected_slot as u8) {
+                    Ok(()) => vend(),
+                    _    => deny()
+                }
               }
               else {
                 deny();
@@ -129,7 +134,7 @@ pub fn build_menu(api: &mut api::API, machine_status: &Value, machine_index: i32
   }
 }
 
-pub fn vend(api: &mut api::API, slot_index: i32) {
+pub fn vend() {
   /* Get the screen bounds. */
   let mut max_x = 0;
   let mut max_y = 0;
@@ -142,7 +147,7 @@ pub fn vend(api: &mut api::API, slot_index: i32) {
   let start_x = (max_x - width) / 2;
   let win = ui_common::create_win(start_y, start_x, height, width);
 
-  mvwprintw(win, 1, 3, "Vending! (Not really)");
+  mvwprintw(win, 1, 3, "Item Dropped!");
   mvwprintw(win, 3, 3, "Press any key to continue");
   wrefresh(win);
   refresh();
@@ -165,7 +170,7 @@ pub fn deny() {
   let win = ui_common::create_win(start_y, start_x, height, width);
 
   wattron(win, COLOR_PAIR(1));
-  mvwprintw(win, 1, 3, "Shit, dude, that's empty.");
+  mvwprintw(win, 1, 3, "Slot empty or insufficient funds.");
   mvwprintw(win, 3, 3, "Press any key to continue");
   wrefresh(win);
   refresh();
@@ -206,4 +211,20 @@ pub fn parse_inventory(
     });
   }
   return Ok(slots);
+}
+
+pub fn parse_machine_name(
+    status: &Value,
+    machine_index: i32,
+) -> Result<String, Box<dyn std::error::Error>> {
+  let drinks: &Map<String, Value> = match status.as_object() {
+    Some(drinks) => drinks,
+    None => panic!("Fuck"),
+  };
+
+  let machines: &Vec<Value> = match drinks["machines"].as_array() {
+    Some(machines) => machines,
+    None => panic!("Fuck"),
+  };
+  Ok(machines[machine_index as usize]["name"].as_str().unwrap().to_string())
 }
