@@ -1,20 +1,14 @@
 use ncurses::*;
-
 use crate::ui::inventory;
 use crate::ui::ui_common;
-
+use serde_json::{Map, Value};
 use crate::api;
 
-pub fn pick() {
-  ui_common::launch();
-
-  refresh();
-
+pub fn pick_machine(api: &mut api::API) {
   /* Get the screen bounds. */
   let mut max_x = 0;
   let mut max_y = 0;
   getmaxyx(stdscr(), &mut max_y, &mut max_x);
-
   /* Start in the center. */
   let height = 10;
   let width = 30;
@@ -23,25 +17,24 @@ pub fn pick() {
   let win = ui_common::create_win(start_y, start_x, height, width);
 
   // The API needs a sec...
-  mvwprintw(win, 1, 3, "Loading...");
+  mvwprintw(win, 1, 2, "Loading...");
   wrefresh(win);
-
   // I wanna draw the menu _over_ the logo, so that comes first.
   ui_common::draw_logo();
   ui_common::print_instructions();
   box_(win, 0, 0);
-
   mvwprintw(win, 1, 2, "SELECT A MACHINE");
   mvwprintw(win, 2, 2, "================");
 
-  let mut api = api::API::new(); // Cheetos.
-  let machines_online = api::API::get_machines(&mut api);
-
+  let machine_status = match api::API::get_machine_status(api) {
+      Ok(status) => status,
+      Err(fuck) => panic!("{}", fuck)
+  };
+  let machines_online = parse_machines(&machine_status);
   match machines_online {
     Ok(machine_names) => {
-      let machine_count = machine_names.len(); // Start printing machines on the 3rd row of the Window.
+      let machine_count = machine_names.len();
       let mut selected_machine: i32 = 0;
-      
       for n in 0..machine_count {
         if n as i32 == selected_machine {
           wattron(win, A_REVERSE());
@@ -52,10 +45,7 @@ pub fn pick() {
         );
         wattroff(win, A_REVERSE());
       }     
-
-      refresh();
       wrefresh(win);
-    
       let mut key = getch();
       loop {
         match key {
@@ -70,7 +60,7 @@ pub fn pick() {
                 }
             },
             KEY_RIGHT => {
-                inventory::build_menu(&mut api, selected_machine);
+                inventory::build_menu(api, &machine_status, selected_machine);
                 box_(win, 0, 0);
                 refresh();
                 wrefresh(win);
@@ -82,7 +72,6 @@ pub fn pick() {
                 refresh();
             }
         }
-
         for n in 0..machine_count {
           if n as i32 == selected_machine {
             wattron(win, A_REVERSE());
@@ -93,14 +82,9 @@ pub fn pick() {
           );
           wattroff(win, A_REVERSE());
         }
-
-        refresh();
         wrefresh(win);
-
         key = getch(); 
       }
-
-      //inventory::build_menu(&mut api, requested_machine as i32 - 0x30 - 1); // -1 to start at zero
       ui_common::destroy_win(win);
     }
     _ => {
@@ -109,3 +93,24 @@ pub fn pick() {
     }
   }
 }
+
+pub fn parse_machines(status: &Value) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+  let mut display_names = Vec::new();
+  let drinks: &Map<String, Value> = match status.as_object() {
+    Some(drinks) => drinks,
+            None => panic!("No status object found."),
+  };
+  let machines: &Vec<Value> = match drinks["machines"].as_array() {
+    Some(machines) => machines,
+              None => panic!("No machine array found."),
+  };
+  for machine in machines {
+    //let machine: &Map<String, Value> =
+    match machine.as_object() {
+      Some(machine) => display_names.push(machine["display_name"].as_str().unwrap().to_string()),
+               None => panic!("No machines found."),
+    };
+  }
+  return Ok(display_names);
+}
+

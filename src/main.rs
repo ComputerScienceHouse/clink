@@ -56,7 +56,9 @@ fn process_command(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>
 }
 
 fn cli() {
+
+  let mut api = api::API::new(); // Cheetos.
   ui::ui_common::launch();
-  ui::machine::pick();
+  ui::machine::pick_machine(&mut api);
   ui::ui_common::end();
 }

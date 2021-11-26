@@ -5,8 +5,6 @@ use serde_json::{Map, Value};
 use std::fmt;
 use url::Url;
 
-use crate::ui::inventory;
-
 pub struct API {
   token: Option<String>,
 }
@@ -56,6 +54,7 @@ impl API {
       }
     };
   }
+
   pub fn get_token(self: &mut API) -> Result<String, Box<dyn std::error::Error>> {
     return match &self.token {
       Some(token) => Ok(token.to_string()),
@@ -92,73 +91,12 @@ impl API {
     Ok(response["drink_balance"].as_u64().unwrap())
   }
 
-  pub fn get_machines(self: &mut API) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+  pub fn get_machine_status(self: &mut API) -> Result<Value, Box<dyn std::error::Error>> {
     let token = self.get_token()?;
-
     let client = HttpClient::new()?;
     let request = Request::get("https://drink.csh.rit.edu/drinks")
       .header("Authorization", token)
       .body(())?;
-
-    let mut display_names = Vec::new();
-
-    let drinks: Value = client.send(request)?.json()?;
-    let drinks: &Map<String, Value> = match drinks.as_object() {
-      Some(drinks) => drinks,
-      None => panic!("Fuck"),
-    };
-    let machines: &Vec<Value> = match drinks["machines"].as_array() {
-      Some(machines) => machines,
-      None => panic!("Fuck"),
-    };
-    for machine in machines {
-      let machine: &Map<String, Value> = match machine.as_object() {
-        Some(machine) => machine,
-        None => panic!("Fuck!"),
-      };
-      display_names.push(machine["display_name"].as_str().unwrap().to_string());
-    }
-    return Ok(display_names);
-  }
-
-  pub fn get_inventory(
-    self: &mut API,
-    machine_index: i32,
-  ) -> Result<Vec<inventory::Item>, Box<dyn std::error::Error>> {
-    let token = self.get_token()?;
-
-    let client = HttpClient::new()?;
-    let request = Request::get("https://drink.csh.rit.edu/drinks")
-      .header("Authorization", token)
-      .body(())?;
-
-    // TODO: There's a better way to handle these. You could just
-    // Unwrap them, or do something else.
-    let drinks: Value = client.send(request)?.json()?;
-    let drinks: &Map<String, Value> = match drinks.as_object() {
-      Some(drinks) => drinks,
-      None => panic!("Fuck"),
-    };
-
-    let machines: &Vec<Value> = match drinks["machines"].as_array() {
-      Some(machines) => machines,
-      None => panic!("Fuck"),
-    };
-
-    let selected_machine = machines[machine_index as usize].clone();
-    let mut slots: Vec<inventory::Item> = Vec::new();
-    for object in selected_machine["slots"].as_array().unwrap() {
-        
-      let empty: bool = match object["item"]["name"].as_str() {
-        Some("Empty") => true,
-        _ => false
-      };
-      slots.push(inventory::Item {
-        name: object["item"]["name"].to_string(),
-        price: object["item"]["price"].as_i64().unwrap() as i32,
-        empty: empty
-      });
-    }
-    return Ok(slots);
+    Ok(client.send(request)?.json()?)
   }
 }

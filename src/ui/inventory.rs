@@ -1,7 +1,6 @@
 use ncurses::*;
-
 use crate::ui::ui_common;
-
+use serde_json::{Map, Value};
 use crate::api;
 
 #[derive(Debug)]
@@ -17,11 +16,9 @@ impl Item {
   }
 }
 
-pub fn build_menu(api: &mut api::API, machine_index: i32) {
+pub fn build_menu(api: &mut api::API, machine_status: &Value, machine_index: i32) {
   /* Get the screen bounds. */
-  let mut max_x = 0;
-  let mut max_y = 0;
-  getmaxyx(stdscr(), &mut max_y, &mut max_x);
+  let (max_y, max_x) = ui_common::get_bounds();
 
   /* Create the window */
   let height = 30;
@@ -37,17 +34,9 @@ pub fn build_menu(api: &mut api::API, machine_index: i32) {
   mvwprintw(win, 1, 3, "SELECT A DRINK");
   mvwprintw(win, 2, 2, "================");
 
-  let inventory = api::API::get_inventory(api, machine_index);
+  let inventory = parse_inventory(&machine_status, machine_index);
   match inventory {
     Ok(slots) => {
-     /* let mut slot_count = 1; // Start printing machines on the 3rd row of the Window.
-      for slot in slots.iter() {
-        mvwprintw(
-          win, 2 + slot_count, 2,
-          format!("{}. {} ({})", slot_count, slot.name, slot.price).as_str(),
-        );
-        slot_count += 1;
-      }*/
       // TODO: Get real amt of credits.
       let credits = api::API::get_credits(api);
       mvwprintw(win, height - 3, width - 20, format!("Credits: {}", credits.unwrap()).as_str());
@@ -161,8 +150,6 @@ pub fn vend(api: &mut api::API, slot_index: i32) {
   ui_common::destroy_win(win);
 }
 
-
-
 pub fn deny() {
   attron(COLOR_PAIR(1));
   /* Get the screen bounds. */
@@ -186,4 +173,37 @@ pub fn deny() {
   wattroff(win, COLOR_PAIR(1));
   ui_common::destroy_win(win);
   attroff(COLOR_PAIR(1));
+}
+
+pub fn parse_inventory(
+  status: &Value,
+  machine_index: i32,
+) -> Result<Vec<Item>, Box<dyn std::error::Error>> {
+  // TODO: There's a better way to handle these. You could just
+  // Unwrap them, or do something else.
+  let drinks: &Map<String, Value> = match status.as_object() {
+    Some(drinks) => drinks,
+    None => panic!("Fuck"),
+  };
+
+  let machines: &Vec<Value> = match drinks["machines"].as_array() {
+    Some(machines) => machines,
+    None => panic!("Fuck"),
+  };
+
+  let selected_machine = machines[machine_index as usize].clone();
+  let mut slots: Vec<Item> = Vec::new();
+  for object in selected_machine["slots"].as_array().unwrap() {
+      
+    let empty: bool = match object["item"]["name"].as_str() {
+      Some("Empty") => true,
+      _ => false
+    };
+    slots.push(Item {
+      name: object["item"]["name"].to_string(),
+      price: object["item"]["price"].as_i64().unwrap() as i32,
+      empty: empty
+    });
+  }
+  return Ok(slots);
 }
