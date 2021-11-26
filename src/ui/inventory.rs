@@ -41,7 +41,7 @@ pub fn build_menu(api: &mut api::API, machine_status: &Value, machine_index: i32
     Ok(slots) => {
       // TODO: Get real amt of credits.
       let credits = api::API::get_credits(api);
-      mvwprintw(win, height - 3, width - 20, format!("Credits: {}", credits.unwrap()).as_str());
+      mvwprintw(win, height - 2, width - 20, format!("Credits: {}", credits.unwrap()).as_str());
       wrefresh(win);
       refresh();
       //let requested_machine = getch();

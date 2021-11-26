@@ -18,7 +18,7 @@ pub fn pick_machine(api: &mut api::API) {
 
   // The API needs a sec...
   mvwprintw(win, 1, 2, "Loading...");
-  wrefresh(win);
+  ui_common::refresh_win(win);
 
   // I wanna draw the menu _over_ the logo, so that comes first.
   ui_common::draw_logo();
@@ -26,6 +26,9 @@ pub fn pick_machine(api: &mut api::API) {
   box_(win, 0, 0);
   mvwprintw(win, 1, 2, "SELECT A MACHINE");
   mvwprintw(win, 2, 2, "================");
+
+  let credits = api::API::get_credits(api);
+  mvwprintw(win, height - 2, width - 20, format!("Credits: {}", credits.unwrap()).as_str());
 
   let machine_status = match api::API::get_machine_status(api) {
       Ok(status) => {
@@ -38,6 +41,8 @@ pub fn pick_machine(api: &mut api::API) {
       }
   };
   let machines_online = parse_machines(&machine_status);
+  refresh();
+  ui_common::refresh_win(win);
   match machines_online {
     Ok(machine_names) => {
       let machine_count = machine_names.len();
