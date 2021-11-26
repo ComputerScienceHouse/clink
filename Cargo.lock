@@ -91,7 +91,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "clidrink"
+name = "clink"
 version = "0.1.0"
 dependencies = [
  "clap",
