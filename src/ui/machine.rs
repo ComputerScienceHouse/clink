@@ -27,7 +27,7 @@ pub fn pick_machine(api: &mut api::API) {
   mvwprintw(win, 1, 2, "SELECT A MACHINE");
   mvwprintw(win, 2, 2, "================");
 
-  let credits = api::API::get_credits(api);
+  let mut credits = api::API::get_credits(api);
   mvwprintw(win, height - 2, width - 20, format!("Credits: {}", credits.unwrap()).as_str());
 
   let machine_status = match api::API::get_machine_status(api) {
@@ -73,6 +73,11 @@ pub fn pick_machine(api: &mut api::API) {
             },
             KEY_RIGHT => {
                 inventory::build_menu(api, &machine_status, selected_machine);
+                // Refresh credits in case we bought anything.
+                credits = api::API::get_credits(api);
+                wmove(win, height-2, width-20);
+                wclrtoeol(win);
+                mvwprintw(win, height-2, width-20, format!("Credits: {}", credits.unwrap()).as_str());
                 box_(win, 0, 0);
                 refresh();
                 wrefresh(win);

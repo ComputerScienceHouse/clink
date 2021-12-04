@@ -81,14 +81,19 @@ impl API {
   }
 
   pub fn get_credits(self: &mut API) -> Result<u64, Box<dyn std::error::Error>> {
-    let token = self.get_token()?;
+    //let token = self.get_token()?;
     let client = HttpClient::new()?;
     // Can also be used to get other user information
     let request = Request::get("https://sso.csh.rit.edu/auth/realms/csh/protocol/openid-connect/userinfo")
-        .header("Authorization", token)
+        .header("Authorization", self.get_token()?)
         .body(())?;
     let response: Value = client.send(request)?.json()?;
-    Ok(response["drink_balance"].as_u64().unwrap())
+    let uid = response["preferred_username"].as_str().unwrap().to_string();
+    let credit_request = Request::get(format!("https://drink.csh.rit.edu/users/credits?uid={}", uid))
+        .header("Authorization", self.get_token()?)
+        .body(())?;
+    let credit_response: Value = client.send(credit_request)?.json()?;
+    Ok(credit_response["user"]["drinkBalance"].as_str().unwrap().parse::<u64>()?) // Coffee
   }
 
   pub fn get_machine_status(self: &mut API) -> Result<Value, Box<dyn std::error::Error>> {

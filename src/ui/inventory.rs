@@ -7,12 +7,13 @@ use crate::api;
 pub struct Item {
   pub name: String,
   pub price: i32,
+  pub active: bool,
   pub empty: bool,
 }
 
 impl Item {
-  pub fn new(name: String, price: i32, empty: bool) -> Self {
-    Self { name, price, empty }
+  pub fn new(name: String, price: i32, active: bool, empty: bool) -> Self {
+    Self { name, price, active, empty }
   }
 }
 
@@ -40,7 +41,7 @@ pub fn build_menu(api: &mut api::API, machine_status: &Value, machine_index: i32
   match inventory {
     Ok(slots) => {
       // TODO: Get real amt of credits.
-      let credits = api::API::get_credits(api);
+      let mut credits = api::API::get_credits(api);
       mvwprintw(win, height - 2, width - 20, format!("Credits: {}", credits.unwrap()).as_str());
       wrefresh(win);
       refresh();
@@ -55,14 +56,16 @@ pub fn build_menu(api: &mut api::API, machine_status: &Value, machine_index: i32
               wattron(win, A_REVERSE());
           }
           if slots[n].empty {
-            //wattron(win, A_DIM());
             wattron(win, COLOR_PAIR(1));
+          }
+          if !slots[n].active {
+            wattron(win, A_DIM());
           }
           mvwprintw(
               win, 3 + n as i32, 2,
               format!("{} ({} credits)", slots[n].name, slots[n].price).as_str(),
           );
-          //wattroff(win, A_DIM());
+          wattroff(win, A_DIM());
           wattroff(win, COLOR_PAIR(1));
           wattroff(win, A_REVERSE());
       }
@@ -85,10 +88,17 @@ pub fn build_menu(api: &mut api::API, machine_status: &Value, machine_index: i32
             },
             KEY_RIGHT => { 
               //inventory::build_menu(&mut api, selected_machine);
-              if !slots[selected_slot as usize].empty {
-                match api.drop(machine_name.clone(), selected_slot as u8) {
-                    Ok(()) => vend(),
-                    _    => deny()
+              if !slots[selected_slot as usize].empty && slots[selected_slot as usize].active {
+                match api.drop(machine_name.clone(), selected_slot as u8 + 1) { // The API returns a zero-indexed array of slots, but Mizu wants it to be 1-indexed 
+                    Ok(()) => {
+                      vend();
+                      // Refresh credits in case we bought anything.
+                      credits = api::API::get_credits(api);
+                      wmove(win, height-2, width-20);
+                      wclrtoeol(win);
+                      mvwprintw(win, height-2, width-20, format!("Credits: {}", credits.unwrap()).as_str());
+                    },
+                    _ => deny()
                 }
               }
               else {
@@ -106,17 +116,19 @@ pub fn build_menu(api: &mut api::API, machine_status: &Value, machine_index: i32
         
         for n in 0..slot_count {
           if n as i32 == selected_slot {
-            wattron(win, A_REVERSE());
+              wattron(win, A_REVERSE());
           }
           if slots[n].empty {
-            //wattron(win, A_DIM());
             wattron(win, COLOR_PAIR(1));
           }
+          if !slots[n].active {
+            wattron(win, A_DIM());
+          }
           mvwprintw(
-            win, 3 + n as i32, 2,
-            format!("{} ({} credits)", slots[n].name, slots[n].price).as_str(),
+              win, 3 + n as i32, 2,
+              format!("{} ({} credits)", slots[n].name, slots[n].price).as_str(),
           );
-          //wattroff(win, A_DIM());
+          wattroff(win, A_DIM());
           wattroff(win, COLOR_PAIR(1));
           wattroff(win, A_REVERSE());
         }
@@ -199,14 +211,38 @@ pub fn parse_inventory(
   let selected_machine = machines[machine_index as usize].clone();
   let mut slots: Vec<Item> = Vec::new();
   for object in selected_machine["slots"].as_array().unwrap() {
-      
-    let empty: bool = match object["item"]["name"].as_str() {
-      Some("Empty") => true,
-      _ => false
+    
+    // The old way to determine fullness. We should be checking the actual booleans.
+    //let empty: bool = match object["item"]["name"].as_str() {
+    //  Some("Empty") => true,
+    //  _ => false
+    //};
+
+    // Let's check the actual boolean fields
+//    ui_common::end();
+//    println!("{}", object["empty"].as_bool().unwrap());
+//    println!("{}", object["active"].as_bool().unwrap());
+//    panic!("Damn lol");
+    let empty: bool = match object["empty"].as_bool() {
+      Some(value) => value,
+      _ => {
+        eprintln!("Warning: Got a blank value from object emptiness");
+        true // For saftey, assume "true" as default value.
+      } 
     };
+
+    let active: bool = match object["active"].as_bool() {
+      Some(value) => value,
+      _ => {
+        eprintln!("Warning: Got a blank value from object activeness");
+        false // For saftey, assume "false" as default value.
+      } 
+    };
+
     slots.push(Item {
       name: object["item"]["name"].to_string(),
       price: object["item"]["price"].as_i64().unwrap() as i32,
+      active: active,
       empty: empty
     });
   }
