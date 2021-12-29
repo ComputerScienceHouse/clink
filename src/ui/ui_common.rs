@@ -20,6 +20,10 @@ pub fn launch() {
   /* Invisible cursor. */
   curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
 
+  /* Colors. */
+  do_color();
+  attron(COLOR_PAIR(2));
+
   /* Update the screen. */
   refresh();
 }
@@ -35,8 +39,14 @@ pub fn create_win(y: i32, x: i32, height: i32, width: i32) -> WINDOW {
   win
 }
 
+pub fn refresh_win(win: WINDOW) {
+  box_(win, 0, 0);
+  wrefresh(win);
+}
+
 pub fn destroy_win(win: WINDOW) {
   let ch = ' ' as chtype;
+  werase(win);
   wborder(win, ch, ch, ch, ch, ch, ch, ch, ch);
   wrefresh(win);
   delwin(win);
@@ -68,4 +78,16 @@ pub fn draw_logo() {
       " .........................` `....-"
     ),
   );
+}
+
+pub fn print_instructions() {  
+  let (max_y, max_x) = get_bounds();
+  mvprintw(max_y - 2, max_x - 31, "Use the ARROW KEYS to navigate."); 
+}
+
+pub fn do_color() {
+  /* Start colors. */
+  start_color();
+  init_pair(1, COLOR_RED, COLOR_BLACK);  
+  init_pair(2, COLOR_WHITE, COLOR_BLACK);  
 }
