@@ -41,8 +41,13 @@ pub fn list(matches: &ArgMatches<'_>, api: &mut API) -> Result<(), Box<dyn std::
       Some(name) => name.to_string(),
       None => return Err(Box::new(APIError::BadFormat)),
     };
-    println!("{}", display_name);
-    println!("{}", "=".repeat(display_name.len()));
+    let name = match machine["name"].as_str() {
+      Some(name) => name.to_string(),
+      None => return Err(Box::new(APIError::BadFormat)),
+    };
+    let subject_line = format!("{} ({})", display_name, name);
+    println!("{}", &subject_line);
+    println!("{}", "=".repeat(subject_line.len()));
     let slots: &Vec<Value> = match machine["slots"].as_array() {
       Some(slots) => slots,
       None => return Err(Box::new(APIError::BadFormat)),
