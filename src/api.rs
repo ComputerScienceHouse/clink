@@ -1,8 +1,13 @@
+extern crate rpassword;
+
 use http::status::StatusCode;
 use isahc::{auth::Authentication, prelude::*, HttpClient, Request};
+use rpassword::read_password;
 use serde_json::json;
 use serde_json::{Map, Value};
 use std::fmt;
+use std::io::{Read, Write};
+use std::process::{Command, Stdio};
 use url::Url;
 
 pub struct API {
@@ -64,7 +69,10 @@ impl API {
           .body(())?.send()?;
         let location = match response.headers().get("Location") {
           Some(location) => location,
-          None => return Err(Box::new(APIError::Unauthorized)),
+          None => {
+            self.login();
+            return self.get_token();
+          },
         };
         let url = Url::parse(&location.to_str()?.replace("#", "?"))?;
 
@@ -78,6 +86,37 @@ impl API {
         return Err(Box::new(APIError::BadFormat));
       }
     };
+  }
+
+  fn login(self: &mut API){
+    // Get credentials
+    let mut username = String::new();
+    println!("Please enter your CSH username: ");
+    std::io::stdin().read_line(&mut username).expect("Fugma");
+    println!("Please enter your CSH password: ");
+    let password = read_password().unwrap();
+    // Start kinit, ready to get password from pipe
+    let process = match Command::new("sh")
+                                .arg("-c")
+                                .arg(String::from("kinit ") + &String::from(username.trim()) + &String::from("@CSH.RIT.EDU"))
+                                .stdin(Stdio::piped())
+                                .stdout(Stdio::piped())
+                                .spawn() {
+        Err(why) => panic!("couldn't spawn kinit: {}", why),
+        Ok(process) => process,
+    };
+
+    // Pipe in password
+    match process.stdin.unwrap().write_all(password.as_bytes()) {
+        Err(why) => panic!("couldn't write password: {}", why),
+        Ok(_) => println!("..."),
+    }
+
+    let mut s = String::new();
+    match process.stdout.unwrap().read_to_string(&mut s) {
+        Err(why) => panic!("couldn't read stdout: {}", why),
+        Ok(_) => (),
+    }
   }
 
   pub fn get_credits(self: &mut API) -> Result<u64, Box<dyn std::error::Error>> {
