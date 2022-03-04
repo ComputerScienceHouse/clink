@@ -5,10 +5,12 @@ use isahc::{auth::Authentication, prelude::*, HttpClient, Request};
 use rpassword::read_password;
 use serde_json::json;
 use serde_json::{Map, Value};
+use std::env;
 use std::fmt;
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 use url::Url;
+use users::get_current_username;
 
 pub struct API {
   token: Option<String>,
@@ -70,7 +72,7 @@ impl API {
         let location = match response.headers().get("Location") {
           Some(location) => location,
           None => {
-            self.login();
+            API::login();
             return self.get_token();
           },
         };
@@ -88,12 +90,20 @@ impl API {
     };
   }
 
-  fn login(self: &mut API){
+  fn login(){
     // Get credentials
-    let mut username = String::new();
-    println!("Please enter your CSH username: ");
-    std::io::stdin().read_line(&mut username).expect("Fugma");
-    println!("Please enter your CSH password: ");
+    let mut username = match env::var("CLINK_USERNAME") {
+      Ok(user) => {
+        if user.chars().all(char::is_alphanumeric) {
+          user
+        } else {
+          panic!("CSH Username Invalid! Must only contain alphanumeric symbols");
+        }
+      },
+      Err(_) => get_current_username().unwrap().into_string().unwrap(),
+    };
+    // TODO: Sanitize username
+    println!("Please enter password for {}, or nothing to exit: ", username);
     let password = read_password().unwrap();
     // Start kinit, ready to get password from pipe
     let process = match Command::new("sh")
@@ -107,16 +117,11 @@ impl API {
     };
 
     // Pipe in password
-    match process.stdin.unwrap().write_all(password.as_bytes()) {
-        Err(why) => panic!("couldn't write password: {}", why),
-        Ok(_) => println!("..."),
-    }
+    process.stdin.unwrap().write_all(password.as_bytes()).unwrap();
 
     let mut s = String::new();
-    match process.stdout.unwrap().read_to_string(&mut s) {
-        Err(why) => panic!("couldn't read stdout: {}", why),
-        Ok(_) => (),
-    }
+    process.stdout.unwrap().read_to_string(&mut s).unwrap();
+    println!("...\n\n");
   }
 
   pub fn get_credits(self: &mut API) -> Result<u64, Box<dyn std::error::Error>> {
