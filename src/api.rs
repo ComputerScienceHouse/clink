@@ -1,5 +1,3 @@
-extern crate rpassword;
-
 use http::status::StatusCode;
 use isahc::{auth::Authentication, prelude::*, HttpClient, Request};
 use rpassword::read_password;
@@ -74,7 +72,7 @@ impl API {
           None => {
             API::login();
             return self.get_token();
-          },
+          }
         };
         let url = Url::parse(&location.to_str()?.replace("#", "?"))?;
 
@@ -90,34 +88,39 @@ impl API {
     };
   }
 
-  fn login(){
+  fn login() {
     // Get credentials
     let mut username = match env::var("CLINK_USERNAME") {
       Ok(user) => {
         if user.chars().all(char::is_alphanumeric) {
           user
         } else {
-          panic!("CSH Username Invalid! Must only contain alphanumeric symbols");
+          get_current_username().unwrap().into_string().unwrap()
         }
-      },
+      }
       Err(_) => get_current_username().unwrap().into_string().unwrap(),
     };
-    // TODO: Sanitize username
-    println!("Please enter password for {}, or nothing to exit: ", username);
+
+    println!(
+     "Please enter password for {}: ",
+     username
+    );
     let password = read_password().unwrap();
+
     // Start kinit, ready to get password from pipe
-    let process = match Command::new("sh")
-                                .arg("-c")
-                                .arg(String::from("kinit ") + &String::from(username.trim()) + &String::from("@CSH.RIT.EDU"))
-                                .stdin(Stdio::piped())
-                                .stdout(Stdio::piped())
-                                .spawn() {
-        Err(why) => panic!("couldn't spawn kinit: {}", why),
-        Ok(process) => process,
-    };
+    let process = Command::new("kinit")
+      .arg(format!("{}@CSH.RIT.EDU", username))
+      .stdin(Stdio::piped())
+      .stdout(Stdio::piped())
+      .spawn()
+      .unwrap();
 
     // Pipe in password
-    process.stdin.unwrap().write_all(password.as_bytes()).unwrap();
+    process
+     .stdin
+     .unwrap()
+     .write_all(password.as_bytes())
+     .unwrap();
 
     let mut s = String::new();
     process.stdout.unwrap().read_to_string(&mut s).unwrap();
@@ -128,16 +131,25 @@ impl API {
     //let token = self.get_token()?;
     let client = HttpClient::new()?;
     // Can also be used to get other user information
-    let request = Request::get("https://sso.csh.rit.edu/auth/realms/csh/protocol/openid-connect/userinfo")
+    let request =
+      Request::get("https://sso.csh.rit.edu/auth/realms/csh/protocol/openid-connect/userinfo")
         .header("Authorization", self.get_token()?)
         .body(())?;
     let response: Value = client.send(request)?.json()?;
     let uid = response["preferred_username"].as_str().unwrap().to_string();
-    let credit_request = Request::get(format!("https://drink.csh.rit.edu/users/credits?uid={}", uid))
-        .header("Authorization", self.get_token()?)
-        .body(())?;
+    let credit_request = Request::get(format!(
+      "https://drink.csh.rit.edu/users/credits?uid={}",
+      uid
+    ))
+    .header("Authorization", self.get_token()?)
+    .body(())?;
     let credit_response: Value = client.send(credit_request)?.json()?;
-    Ok(credit_response["user"]["drinkBalance"].as_str().unwrap().parse::<u64>()?) // Coffee
+    Ok(
+      credit_response["user"]["drinkBalance"]
+        .as_str()
+        .unwrap()
+        .parse::<u64>()?,
+    ) // Coffee
   }
 
   pub fn get_machine_status(self: &mut API) -> Result<Value, Box<dyn std::error::Error>> {
