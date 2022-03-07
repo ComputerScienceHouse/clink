@@ -50,16 +50,20 @@ fn process_command(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>
   } else if let Some(matches) = matches.subcommand_matches("drop") {
     return commands::drop::drop(matches, &mut api);
   } else {
-    cli();
+    cli(&mut api);
     return Ok(());
   }
 }
 
-fn cli() {
-
-  let mut api = api::API::new(); // Cheetos.
-
+fn cli(api: &mut api::API) {
   ui::ui_common::launch();
-  ui::machine::pick_machine(&mut api);
-  ui::ui_common::end();
+  let task = match ui::machine::pick_machine(api) {
+    Ok(_) => {
+      ui::ui_common::end();
+    }
+    Err(err) => {
+      ui::ui_common::end();
+      eprintln!("{}", err);
+    }
+  };
 }
