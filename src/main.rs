@@ -7,7 +7,7 @@ mod ui;
 
 fn main() {
   let matches = App::new("CLI Drink")
-    .version("1.0.0")
+    .version("0.1.1")
     .author("Mary Strodl <mstrodl@csh.rit.edu>")
     .about("Drops drinks from CSH vending machines")
     .subcommand(
