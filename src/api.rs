@@ -90,16 +90,11 @@ impl API {
 
   fn login() {
     // Get credentials
-    let mut username = match env::var("CLINK_USERNAME") {
-      Ok(user) => {
-        if user.chars().all(char::is_alphanumeric) {
-          user
-        } else {
-          get_current_username().unwrap().into_string().unwrap()
-        }
-      }
-      Err(_) => get_current_username().unwrap().into_string().unwrap(),
-    };
+    let username: Option<String> = std::env::var("CLINK_USERNAME")
+        .map(|it| Some(it))
+        .unwrap_or_else(|_| get_current_username().and_then(|it| it.into_string().ok()));
+
+    let username: String = username.unwrap();
 
     println!(
      "Please enter password for {}: ",
