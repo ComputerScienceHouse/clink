@@ -33,7 +33,9 @@ impl fmt::Display for APIError {
 
 impl API {
   pub fn new() -> API {
-    return API { token: None };
+    let mut api = API { token: None };
+    api.get_token();
+    return api;
   }
   pub fn drop(self: &mut API, machine: String, slot: u8) -> Result<(), Box<dyn std::error::Error>> {
     let token = self.get_token()?;
@@ -79,7 +81,7 @@ impl API {
         for (key, value) in url.query_pairs() {
           if key == "access_token" {
             let value = "Bearer ".to_owned() + &value.to_string();
-            self.token = Some(value.to_string());
+            //self.token = Some(value.to_string());
             return Ok(value.to_string());
           }
         }
