@@ -81,7 +81,7 @@ impl API {
         for (key, value) in url.query_pairs() {
           if key == "access_token" {
             let value = "Bearer ".to_owned() + &value.to_string();
-            //self.token = Some(value.to_string());
+            self.token = Some(value.to_string());
             return Ok(value.to_string());
           }
         }
