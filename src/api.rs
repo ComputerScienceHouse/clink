@@ -91,34 +91,34 @@ impl API {
   fn login() {
     // Get credentials
     let username: Option<String> = std::env::var("CLINK_USERNAME")
-        .map(|it| Some(it))
-        .unwrap_or_else(|_| get_current_username().and_then(|it| it.into_string().ok()));
+      .map(|it| Some(it))
+      .unwrap_or_else(|_| get_current_username().and_then(|it| it.into_string().ok()));
 
     let username: String = username.unwrap();
 
-    println!(
-     "Please enter password for {}: ",
-     username
-    );
-    let password = read_password().unwrap();
-
     // Start kinit, ready to get password from pipe
-    let process = Command::new("kinit")
+    let mut process = Command::new("kinit")
       .arg(format!("{}@CSH.RIT.EDU", username))
       .stdin(Stdio::piped())
-      .stdout(Stdio::piped())
+      .stdout(Stdio::null())
       .spawn()
       .unwrap();
 
-    // Pipe in password
-    process
-     .stdin
-     .unwrap()
-     .write_all(password.as_bytes())
-     .unwrap();
+    // Get password
+    println!("Please enter password for {}: ", username);
+    let password = read_password().unwrap();
 
-    let mut s = String::new();
-    process.stdout.unwrap().read_to_string(&mut s).unwrap();
+    // Pipe password into the prompt that "comes up"
+    process
+      .stdin
+      .as_ref()
+      .unwrap()
+      .write_all(password.as_bytes())
+      .unwrap();
+
+    // Wait for login to be complete before continuting
+    process.wait().unwrap();
+
     println!("...\n\n");
   }
 
