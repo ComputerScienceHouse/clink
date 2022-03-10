@@ -1,6 +1,6 @@
 [package]
 name = "clink"
-authors = ["Mary Strodl <mstrodl@csh.rit.edu>"]
+authors = ["Mary Strodl <mstrodl@csh.rit.edu>", "Willard Nilges <wilnil@csh.rit.edu>"]
 version = "0.1.1"
 edition = "2021"
 
