@@ -2,9 +2,10 @@ use ncurses::*;
 use crate::ui::inventory;
 use crate::ui::ui_common;
 use serde_json::{Map, Value};
+use crate::api::APIError;
 use crate::api;
 
-pub fn pick_machine(api: &mut api::API) {
+pub fn pick_machine(api: &mut api::API) -> Result<(), Box<dyn std::error::Error>> {
   /* Get the screen bounds. */
   let mut max_x = 0;
   let mut max_y = 0;
@@ -27,8 +28,14 @@ pub fn pick_machine(api: &mut api::API) {
   mvwprintw(win, 1, 2, "SELECT A MACHINE");
   mvwprintw(win, 2, 2, "================");
 
-  let mut credits = api::API::get_credits(api);
-  mvwprintw(win, height - 2, width - 20, format!("Credits: {}", credits.unwrap()).as_str());
+  let mut credits = match api::API::get_credits(api) {
+    Ok(credits) => credits,
+    Err(err) => {
+        eprintln!("{}", err);
+        return Err(Box::new(APIError::Unauthorized));
+    }
+  };
+  mvwprintw(win, height - 2, width - 20, format!("Credits: {}", credits).as_str());
 
   let machine_status = match api::API::get_machine_status(api) {
       Ok(status) => {
@@ -74,10 +81,16 @@ pub fn pick_machine(api: &mut api::API) {
             KEY_RIGHT => {
                 inventory::build_menu(api, &machine_status, selected_machine);
                 // Refresh credits in case we bought anything.
-                credits = api::API::get_credits(api);
+                credits = match api::API::get_credits(api) {
+                    Ok(credits) => credits,
+                    Err(err) => {
+                        eprintln!("{}", err);
+                        return Err(Box::new(APIError::Unauthorized));
+                    }
+                  };
                 wmove(win, height-2, width-20);
                 wclrtoeol(win);
-                mvwprintw(win, height-2, width-20, format!("Credits: {}", credits.unwrap()).as_str());
+                mvwprintw(win, height-2, width-20, format!("Credits: {}", credits).as_str());
                 box_(win, 0, 0);
                 refresh();
                 wrefresh(win);
@@ -104,6 +117,7 @@ pub fn pick_machine(api: &mut api::API) {
         key = getch(); 
       }
       ui_common::destroy_win(win);
+      Ok(())
     }
     _ => {
       endwin();
