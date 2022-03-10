@@ -1,4 +1,4 @@
-use clap::{App, Arg, ArgMatches, SubCommand};
+use clap::{command, Arg, ArgMatches, Command};
 
 pub mod api;
 pub mod commands;
@@ -6,31 +6,29 @@ pub mod commands;
 mod ui;
 
 fn main() {
-  let matches = App::new("CLI Drink")
-    .version("0.1.1")
-    .author("Mary Strodl <mstrodl@csh.rit.edu>")
+  let matches = command!("CLI Drink")
     .about("Drops drinks from CSH vending machines")
     .subcommand(
-      SubCommand::with_name("list")
+      Command::new("list")
         .about("Display available slots")
         .arg(
-          Arg::with_name("machine")
+          Arg::new("machine")
             .index(1)
             .help("Which machine should be listed?")
             .required(false),
         ),
     )
     .subcommand(
-      SubCommand::with_name("drop")
+      Command::new("drop")
         .about("Drops a drink")
         .arg(
-          Arg::with_name("machine")
+          Arg::new("machine")
             .index(1)
             .help("Machine to drop from")
             .required(true),
         )
         .arg(
-          Arg::with_name("slot")
+          Arg::new("slot")
             .index(2)
             .help("Slot to drop from")
             .required(true),
