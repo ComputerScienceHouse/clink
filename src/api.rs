@@ -1,9 +1,14 @@
 use http::status::StatusCode;
 use isahc::{auth::Authentication, prelude::*, HttpClient, Request};
+use rpassword::read_password;
 use serde_json::json;
 use serde_json::{Map, Value};
+use std::env;
 use std::fmt;
+use std::io::{Read, Write};
+use std::process::{Command, Stdio};
 use url::Url;
+use users::get_current_username;
 
 pub struct API {
   token: Option<String>,
@@ -28,7 +33,9 @@ impl fmt::Display for APIError {
 
 impl API {
   pub fn new() -> API {
-    return API { token: None };
+    let mut api = API { token: None };
+    api.get_token();
+    return api;
   }
   pub fn drop(self: &mut API, machine: String, slot: u8) -> Result<(), Box<dyn std::error::Error>> {
     let token = self.get_token()?;
@@ -64,7 +71,10 @@ impl API {
           .body(())?.send()?;
         let location = match response.headers().get("Location") {
           Some(location) => location,
-          None => return Err(Box::new(APIError::Unauthorized)),
+          None => {
+            API::login();
+            return self.get_token();
+          }
         };
         let url = Url::parse(&location.to_str()?.replace("#", "?"))?;
 
@@ -80,20 +90,63 @@ impl API {
     };
   }
 
+  fn login() {
+    // Get credentials
+    let username: Option<String> = std::env::var("CLINK_USERNAME")
+      .map(|it| Some(it))
+      .unwrap_or_else(|_| get_current_username().and_then(|it| it.into_string().ok()));
+
+    let username: String = username.unwrap();
+
+    // Start kinit, ready to get password from pipe
+    let mut process = Command::new("kinit")
+      .arg(format!("{}@CSH.RIT.EDU", username))
+      .stdin(Stdio::piped())
+      .stdout(Stdio::null())
+      .spawn()
+      .unwrap();
+
+    // Get password
+    println!("Please enter password for {}: ", username);
+    let password = read_password().unwrap();
+
+    // Pipe password into the prompt that "comes up"
+    process
+      .stdin
+      .as_ref()
+      .unwrap()
+      .write_all(password.as_bytes())
+      .unwrap();
+
+    // Wait for login to be complete before continuting
+    process.wait().unwrap();
+
+    println!("...\n\n");
+  }
+
   pub fn get_credits(self: &mut API) -> Result<u64, Box<dyn std::error::Error>> {
     //let token = self.get_token()?;
     let client = HttpClient::new()?;
     // Can also be used to get other user information
-    let request = Request::get("https://sso.csh.rit.edu/auth/realms/csh/protocol/openid-connect/userinfo")
+    let request =
+      Request::get("https://sso.csh.rit.edu/auth/realms/csh/protocol/openid-connect/userinfo")
         .header("Authorization", self.get_token()?)
         .body(())?;
     let response: Value = client.send(request)?.json()?;
     let uid = response["preferred_username"].as_str().unwrap().to_string();
-    let credit_request = Request::get(format!("https://drink.csh.rit.edu/users/credits?uid={}", uid))
-        .header("Authorization", self.get_token()?)
-        .body(())?;
+    let credit_request = Request::get(format!(
+      "https://drink.csh.rit.edu/users/credits?uid={}",
+      uid
+    ))
+    .header("Authorization", self.get_token()?)
+    .body(())?;
     let credit_response: Value = client.send(credit_request)?.json()?;
-    Ok(credit_response["user"]["drinkBalance"].as_str().unwrap().parse::<u64>()?) // Coffee
+    Ok(
+      credit_response["user"]["drinkBalance"]
+        .as_str()
+        .unwrap()
+        .parse::<u64>()?,
+    ) // Coffee
   }
 
   pub fn get_machine_status(self: &mut API) -> Result<Value, Box<dyn std::error::Error>> {
