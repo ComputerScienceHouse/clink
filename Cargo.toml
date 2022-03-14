@@ -1,12 +1,12 @@
 [package]
 name = "clink"
-version = "0.1.0"
+authors = ["Mary Strodl <mstrodl@csh.rit.edu>", "Willard Nilges <wilnil@csh.rit.edu>"]
+version = "0.1.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = "2.33.3"
 url = "2.2.2"
 serde_json = "1.0.71"
 serde = "1.0.130"
@@ -14,7 +14,5 @@ ncurses = "5.101.0"
 http = "0.2.5"
 rpassword = "5.0"
 users = "0.11.0"
-
-[dependencies.isahc]
-version = "1.6.0"
-features = ["json", "spnego"]
+clap = { version = "3.1.6", features = ["cargo"] }
+isahc = { version = "1.6.0", features = ["json", "spnego"] }

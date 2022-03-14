@@ -6,7 +6,7 @@ use serde_json::{Map, Value};
 use crate::api::APIError;
 use crate::api::API;
 
-pub fn list(matches: &ArgMatches<'_>, api: &mut API) -> Result<(), Box<dyn std::error::Error>> {
+pub fn list(matches: &ArgMatches, api: &mut API) -> Result<(), Box<dyn std::error::Error>> {
   let token = api.get_token()?;
 
   let client = HttpClient::new()?;
