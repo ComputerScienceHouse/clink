@@ -109,6 +109,10 @@ pub fn build_menu(api: &mut api::API, machine_status: &Value, machine_index: i32
               ui_common::destroy_win(win);
               return;
             },
+            113 => {
+              ui_common::destroy_win(win);
+              return;
+            },
             _ => {
               refresh();
             }
