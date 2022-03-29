@@ -1,13 +1,77 @@
 use clap::ArgMatches;
 use isahc::{HttpClient, ReadResponseExt, Request};
-
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use std::fmt;
+use std::io::prelude::*;
 
 use crate::api::APIError;
 use crate::api::API;
 
+#[derive(Debug, Deserialize)]
+struct Drinks {
+  machines: Vec<Machine>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Machine {
+  name: String,
+  display_name: String,
+  slots: Vec<Slot>,
+}
+
+impl fmt::Display for Machine {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(
+      f,
+      "{} ({})\n{}",
+      self.display_name,
+      self.name,
+      "=".repeat(self.display_name.len() + self.name.len() + 3)
+    )
+  }
+}
+
+#[derive(Debug, Deserialize)]
+struct Slot {
+  item: Item,
+  number: u64,
+  empty: bool,
+  active: bool,
+  count: Option<u16>,
+}
+
+impl fmt::Display for Slot {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(
+      f,
+      "{}. {}{}",
+      self.number,
+      self.item,
+      match self.empty {
+        true => " [EMPTY]",
+        false => "",
+      }
+    )
+  }
+}
+
+#[derive(Debug, Deserialize)]
+struct Item {
+  name: String,
+  price: u64,
+}
+
+impl fmt::Display for Item {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "{} ({} Credits)", self.name, self.price)
+  }
+}
+
 pub fn list(matches: &ArgMatches, api: &mut API) -> Result<(), Box<dyn std::error::Error>> {
   let token = api.get_token()?;
+
+  let mut term = term::stdout().unwrap();
 
   let client = HttpClient::new()?;
   let mut url = "https://drink.csh.rit.edu/drinks".to_string();
@@ -17,61 +81,28 @@ pub fn list(matches: &ArgMatches, api: &mut API) -> Result<(), Box<dyn std::erro
   }
   let request = Request::get(url).header("Authorization", token).body(())?;
 
-  let drinks: Value = client.send(request)?.json()?;
-  let drinks: &Map<String, Value> = match drinks.as_object() {
-    Some(drinks) => drinks,
-    None => panic!("Fuck"),
-  };
-  let machines: &Vec<Value> = match drinks.get("machines") {
-    Some(machines) => match machines.as_array() {
-      Some(machines) => machines,
-      None => return Err(Box::new(APIError::BadFormat)),
-    },
-    None => {
-      eprintln!("Couldn't fetch machines! {:?}", drinks);
-      return Err(Box::new(APIError::BadFormat));
-    }
-  };
-  for machine in machines {
-    let machine: &Map<String, Value> = match machine.as_object() {
-      Some(machine) => machine,
-      None => panic!("Fuck!"),
-    };
-    let display_name = match machine["display_name"].as_str() {
-      Some(name) => name.to_string(),
-      None => return Err(Box::new(APIError::BadFormat)),
-    };
-    let name = match machine["name"].as_str() {
-      Some(name) => name.to_string(),
-      None => return Err(Box::new(APIError::BadFormat)),
-    };
-    let subject_line = format!("{} ({})", display_name, name);
-    println!("{}", &subject_line);
-    println!("{}", "=".repeat(subject_line.len()));
-    let slots: &Vec<Value> = match machine["slots"].as_array() {
-      Some(slots) => slots,
-      None => return Err(Box::new(APIError::BadFormat)),
-    };
-    for slot in slots {
-      let slot: &Map<String, Value> = match slot.as_object() {
-        Some(slot) => slot,
-        None => return Err(Box::new(APIError::BadFormat)),
-      };
-
-      let item: &Map<String, Value> = match slot["item"].as_object() {
-        Some(item) => item,
-        None => return Err(Box::new(APIError::BadFormat)),
-      };
-
-      let price = item["price"].as_u64().unwrap();
-      let slot_number = slot["number"].as_u64().unwrap();
-      let name = item["name"].as_str().unwrap();
-      print!("{}. {} ({} Credits)", slot_number, name, price);
-      if slot["empty"].as_bool().unwrap() {
-        print!(" [EMPTY]");
+  let drinks: Drinks = client.send(request)?.json()?;
+  for machine in drinks.machines {
+    term.fg(term::color::CYAN).unwrap();
+    writeln!(term, "{}", machine).unwrap();
+    for slot in machine.slots {
+      match slot.count {
+        Some(0) => term.fg(term::color::RED),
+        Some(_) => term.reset(),
+        None => {
+          if slot.empty || !slot.active {
+            term.fg(term::color::RED)
+          } else {
+            term.reset()
+          }
+        }
       }
-      println!("");
+      .unwrap();
+      writeln!(term, "{}", slot).unwrap();
     }
+    println!("");
+    term.reset().unwrap();
   }
+  term.flush().unwrap();
   return Ok(());
 }
