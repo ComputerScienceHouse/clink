@@ -16,11 +16,7 @@ fn main() {
           .required(false),
       ),
     )
-    .subcommand(
-      Command::new("credits").about(
-        "Prints the number of credits in your account"
-      )
-    )
+    .subcommand(Command::new("credits").about("Prints the number of credits in your account"))
     .subcommand(
       Command::new("drop")
         .about("Drops a drink")
@@ -40,7 +36,7 @@ fn main() {
     .get_matches();
   let result = process_command(matches);
   match result {
-    Ok(_) => {},
+    Ok(_) => {}
     // TODO: More specific errors can just be printed
     Err(ref _err) => result.unwrap(),
   }

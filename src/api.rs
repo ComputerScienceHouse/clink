@@ -2,9 +2,8 @@ use http::status::StatusCode;
 use http::Uri;
 use isahc::{auth::Authentication, prelude::*, HttpClient, Request};
 use rpassword::read_password;
-use serde::{Serialize, Deserialize, de};
+use serde::{de, Deserialize, Serialize};
 use serde_json;
-use serde_json::Value;
 use std::fmt;
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -19,7 +18,7 @@ pub struct API {
 pub enum APIError {
   Unauthorized,
   BadFormat,
-  ServerError(Option<Uri>, String)
+  ServerError(Option<Uri>, String),
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -78,7 +77,8 @@ struct CreditUser {
 
 fn number_string_deserializer<'de, D>(deserializer: D) -> Result<u64, D::Error>
 where
-  D: de::Deserializer<'de> {
+  D: de::Deserializer<'de>,
+{
   let number: String = Deserialize::deserialize(deserializer)?;
   match number.parse::<u64>() {
     Ok(res) => Ok(res),
@@ -100,20 +100,42 @@ impl std::error::Error for APIError {}
 impl fmt::Display for APIError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match self {
-      APIError::Unauthorized => write!(f, "Unauthorized (Did your Kerberos ticket expire?: `kinit`)"),
+      APIError::Unauthorized => write!(
+        f,
+        "Unauthorized (Did your Kerberos ticket expire?: `kinit`)"
+      ),
       APIError::BadFormat => write!(f, "BadFormat (The server sent data we didn't understand)"),
-      APIError::ServerError(path, message) => write!(f, "ServerError for {}: {}", match path {
+      APIError::ServerError(path, message) => write!(
+        f,
+        "ServerError for {}: {}",
+        match path {
           Some(ref uri) => uri.to_string(),
           None => "<unknown>".to_string(),
-      }, message),
+        },
+        message
+      ),
     }
   }
 }
 
 impl Default for API {
-    fn default() -> Self {
-        Self::new()
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+enum APIBody<T: Serialize> {
+  Json(T),
+  NoBody,
+}
+
+impl<T: Serialize> From<APIBody<T>> for isahc::Body {
+  fn from(body: APIBody<T>) -> Self {
+    match body {
+      APIBody::Json(value) => serde_json::to_string(&value).unwrap().into(),
+      APIBody::NoBody => ().into(),
     }
+  }
 }
 
 impl API {
@@ -122,30 +144,48 @@ impl API {
     api.get_token().ok();
     api
   }
-  pub fn drop(self: &mut API, machine: String, slot: u8) -> Result<(), Box<dyn std::error::Error>> {
-    let token = self.get_token()?;
-
+  fn authenticated_request<O, I>(
+    self: &mut API,
+    builder: http::request::Builder,
+    input: APIBody<I>,
+  ) -> Result<O, Box<dyn std::error::Error>>
+  where
+    I: Serialize,
+    O: de::DeserializeOwned,
+  {
     let client = HttpClient::new()?;
-    let request = Request::post("https://drink.csh.rit.edu/drinks/drop")
-      .header("Content-Type", "application/json")
+    let token = self.get_token()?;
+    let builder = builder
       .header("Authorization", token)
-      .body(
-        serde_json::to_string(&DropRequest {
-          machine: machine,
-          slot: slot,
-        })?
-      )?;
-    let mut response = client.send(request)?;
-    return match response.status() {
-      StatusCode::OK => Ok(()),
+      .header("Accept", "application/json");
+    let builder = match input {
+      APIBody::Json(_) => builder.header("Content-Type", "application/json"),
+      APIBody::NoBody => builder,
+    };
+    let mut response = client.send(builder.body(input)?)?;
+    match response.status() {
+      StatusCode::OK => match response.json::<O>() {
+        Ok(value) => Ok(value),
+        Err(_) => Err(Box::new(APIError::BadFormat)),
+      },
       _ => {
         let text = response.text()?;
-        let message = serde_json::from_str::<ErrorResponse>(&text)
-          .map(|body| body.error)
-          .unwrap_or(text);
-        return Err(Box::new(APIError::ServerError(response.effective_uri().map(|uri| uri.clone()), message)));
+        Err(Box::new(APIError::ServerError(
+          response.effective_uri().cloned(),
+          serde_json::from_str::<ErrorResponse>(&text)
+            .map(|body| body.error)
+            .unwrap_or(text),
+        )))
       }
-    };
+    }
+  }
+  pub fn drop(self: &mut API, machine: String, slot: u8) -> Result<(), Box<dyn std::error::Error>> {
+    self
+      .authenticated_request::<serde_json::Value, DropRequest>(
+        Request::post("https://drink.csh.rit.edu/drinks/drop"),
+        APIBody::Json(DropRequest { machine, slot }),
+      )
+      .map(|_value| ())
   }
 
   pub fn get_token(self: &mut API) -> Result<String, Box<dyn std::error::Error>> {
@@ -211,21 +251,18 @@ impl API {
   }
 
   pub fn get_credits(self: &mut API) -> Result<u64, Box<dyn std::error::Error>> {
-    //let token = self.get_token()?;
-    let client = HttpClient::new()?;
     // Can also be used to get other user information
-    let request =
-      Request::get("https://sso.csh.rit.edu/auth/realms/csh/protocol/openid-connect/userinfo")
-        .header("Authorization", self.get_token()?)
-        .body(())?;
-    let user: User = client.send(request)?.json()?;
-    let credit_request = Request::get(format!(
-      "https://drink.csh.rit.edu/users/credits?uid={}",
-      user.preferred_username
-    ))
-    .header("Authorization", self.get_token()?)
-    .body(())?;
-    let credit_response: CreditResponse = client.send(credit_request)?.json()?;
+    let user: User = self.authenticated_request(
+      Request::get("https://sso.csh.rit.edu/auth/realms/csh/protocol/openid-connect/userinfo"),
+      APIBody::NoBody as APIBody<serde_json::Value>,
+    )?;
+    let credit_response: CreditResponse = self.authenticated_request(
+      Request::get(format!(
+        "https://drink.csh.rit.edu/users/credits?uid={}",
+        user.preferred_username
+      )),
+      APIBody::NoBody as APIBody<serde_json::Value>,
+    )?;
     Ok(credit_response.user.drinkBalance)
   }
 
@@ -237,17 +274,15 @@ impl API {
     self: &mut API,
     machine: Option<&str>,
   ) -> Result<DrinkList, Box<dyn std::error::Error>> {
-    let token = self.get_token()?;
-    let client = HttpClient::new()?;
-    let request = Request::get(format!(
-      "https://drink.csh.rit.edu/drinks{}",
-      match machine {
-        Some(machine) => format!("?machine={}", machine),
-        None => "".to_string(),
-      }
-    ))
-    .header("Authorization", token)
-    .body(())?;
-    Ok(client.send(request)?.json::<DrinkList>()?)
+    self.authenticated_request(
+      Request::get(format!(
+        "https://drink.csh.rit.edu/drinks{}",
+        match machine {
+          Some(machine) => format!("?machine={}", machine),
+          None => "".to_string(),
+        }
+      )),
+      APIBody::NoBody as APIBody<serde_json::Value>,
+    )
   }
 }
