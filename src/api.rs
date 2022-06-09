@@ -95,6 +95,14 @@ struct DropRequest {
   slot: u8,
 }
 
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug, Clone)]
+struct DropResponse {
+  #[serde(deserialize_with = "number_string_deserializer")]
+  drinkBalance: u64,
+  // message: String,
+}
+
 impl std::error::Error for APIError {}
 
 impl fmt::Display for APIError {
@@ -179,13 +187,13 @@ impl API {
       }
     }
   }
-  pub fn drop(self: &mut API, machine: String, slot: u8) -> Result<(), Box<dyn std::error::Error>> {
+  pub fn drop(self: &mut API, machine: String, slot: u8) -> Result<u64, Box<dyn std::error::Error>> {
     self
-      .authenticated_request::<serde_json::Value, DropRequest>(
+      .authenticated_request::<DropResponse, _>(
         Request::post("https://drink.csh.rit.edu/drinks/drop"),
         APIBody::Json(DropRequest { machine, slot }),
       )
-      .map(|_value| ())
+      .map(|drop| drop.drinkBalance)
   }
 
   pub fn get_token(self: &mut API) -> Result<String, Box<dyn std::error::Error>> {

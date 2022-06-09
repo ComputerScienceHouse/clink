@@ -36,12 +36,12 @@ pub fn build_menu(api: &mut api::API, machine_status: &api::DrinkList, machine_i
   mvwprintw(win, 2, 2, "==========================");
 
   // TODO: Get real amt of credits.
-  let mut credits = api::API::get_credits(api);
+  let mut credits = api::API::get_credits(api).unwrap();
   mvwprintw(
     win,
     height - 2,
     width - 20,
-    format!("Credits: {}", credits.unwrap()).as_str(),
+    format!("Credits: {}", credits).as_str(),
   );
   wrefresh(win);
   refresh();
@@ -95,17 +95,16 @@ pub fn build_menu(api: &mut api::API, machine_status: &api::DrinkList, machine_i
         if !slots[selected_slot as usize].empty && slots[selected_slot as usize].active {
           match api.drop(machine.name.clone(), selected_slot as u8 + 1) {
             // The API returns a zero-indexed array of slots, but Mizu wants it to be 1-indexed
-            Ok(()) => {
+            Ok(new_credits) => {
+              credits = new_credits;
               vend();
-              // Refresh credits in case we bought anything.
-              credits = api::API::get_credits(api);
               wmove(win, height - 2, width - 20);
               wclrtoeol(win);
               mvwprintw(
                 win,
                 height - 2,
                 width - 20,
-                format!("Credits: {}", credits.unwrap()).as_str(),
+                format!("Credits: {}", credits).as_str(),
               );
             }
             _ => deny(),
