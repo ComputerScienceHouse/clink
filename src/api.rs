@@ -3,6 +3,7 @@ use isahc::{auth::Authentication, prelude::*, HttpClient, Request};
 use rpassword::read_password;
 use serde_json::json;
 use serde_json::{Map, Value};
+use serde::Deserialize;
 use std::env;
 use std::fmt;
 use std::io::{Read, Write};
@@ -18,6 +19,38 @@ pub struct API {
 pub enum APIError {
   Unauthorized,
   BadFormat,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct DrinkList {
+  pub machines: Vec<Machine>,
+  pub message: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct Machine {
+  pub display_name: String,
+  pub id: u64,
+  pub is_online: bool,
+  pub name: String,
+  pub slots: Vec<Slot>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct Slot {
+  pub active: bool,
+  pub count: Option<u64>,
+  pub empty: bool,
+  pub item: Item,
+  pub machine: u64,
+  pub number: u64,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct Item {
+  pub id: u64,
+  pub name: String,
+  pub price: u64,
 }
 
 impl std::error::Error for APIError {}
@@ -149,12 +182,20 @@ impl API {
     ) // Coffee
   }
 
-  pub fn get_machine_status(self: &mut API) -> Result<Value, Box<dyn std::error::Error>> {
+  pub fn get_machine_status(self: &mut API) -> Result<DrinkList, Box<dyn std::error::Error>> {
+    self.get_status_for_machine(None)
+  }
+
+  pub fn get_status_for_machine(self: &mut API, machine: Option<&str>) -> Result<DrinkList, Box<dyn std::error::Error>> {
     let token = self.get_token()?;
     let client = HttpClient::new()?;
-    let request = Request::get("https://drink.csh.rit.edu/drinks")
+    let request = Request::get(
+      format!("https://drink.csh.rit.edu/drinks{}", match machine {
+        Some(machine) => format!("?machine={}", machine),
+        None => "".to_string(),
+      }))
       .header("Authorization", token)
       .body(())?;
-    Ok(client.send(request)?.json()?)
+    Ok(client.send(request)?.json::<DrinkList>()?)
   }
 }

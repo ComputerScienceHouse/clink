@@ -55,7 +55,7 @@ fn process_command(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>
 
 fn cli(api: &mut api::API) {
   ui::ui_common::launch();
-  let task = match ui::machine::pick_machine(api) {
+  match ui::machine::pick_machine(api) {
     Ok(_) => {
       ui::ui_common::end();
     }
