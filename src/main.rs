@@ -6,7 +6,7 @@ pub mod commands;
 mod ui;
 
 fn main() {
-  let matches = command!("CLI Drink")
+  let matches = command!("clink")
     .about("Drops drinks from CSH vending machines")
     .subcommand(
       Command::new("list").about("Display available slots").arg(
