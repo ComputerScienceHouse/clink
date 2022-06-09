@@ -1,8 +1,9 @@
 use http::status::StatusCode;
+use http::Uri;
 use isahc::{auth::Authentication, prelude::*, HttpClient, Request};
 use rpassword::read_password;
-use serde::Deserialize;
-use serde_json::json;
+use serde::{Serialize, Deserialize, de};
+use serde_json;
 use serde_json::Value;
 use std::fmt;
 use std::io::Write;
@@ -18,6 +19,12 @@ pub struct API {
 pub enum APIError {
   Unauthorized,
   BadFormat,
+  ServerError(Option<Uri>, String)
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct ErrorResponse {
+  error: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -52,14 +59,54 @@ pub struct Item {
   pub price: u64,
 }
 
+#[derive(Deserialize, Debug, Clone)]
+struct User {
+  preferred_username: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct CreditResponse {
+  user: CreditUser,
+}
+
+#[allow(non_snake_case)]
+#[derive(Deserialize, Debug, Clone)]
+struct CreditUser {
+  #[serde(deserialize_with = "number_string_deserializer")]
+  drinkBalance: u64,
+}
+
+fn number_string_deserializer<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+  D: de::Deserializer<'de> {
+  let number: String = Deserialize::deserialize(deserializer)?;
+  match number.parse::<u64>() {
+    Ok(res) => Ok(res),
+    Err(e) => Err(de::Error::custom(format!(
+      "Failed to deserialize u64: {}",
+      e
+    ))),
+  }
+}
+
+#[derive(Serialize, Debug, Clone)]
+struct DropRequest {
+  machine: String,
+  slot: u8,
+}
+
 impl std::error::Error for APIError {}
 
 impl fmt::Display for APIError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.write_str(match self {
-      APIError::Unauthorized => "Unauthorized (Did your Kerberos ticket expire?: `kinit`)",
-      APIError::BadFormat => "BadFormat (The server sent data we didn't understand)",
-    })
+    match self {
+      APIError::Unauthorized => write!(f, "Unauthorized (Did your Kerberos ticket expire?: `kinit`)"),
+      APIError::BadFormat => write!(f, "BadFormat (The server sent data we didn't understand)"),
+      APIError::ServerError(path, message) => write!(f, "ServerError for {}: {}", match path {
+          Some(ref uri) => uri.to_string(),
+          None => "<unknown>".to_string(),
+      }, message),
+    }
   }
 }
 
@@ -83,19 +130,20 @@ impl API {
       .header("Content-Type", "application/json")
       .header("Authorization", token)
       .body(
-        json!({
-          "machine": machine,
-          "slot": slot,
-        })
-        .to_string(),
+        serde_json::to_string(&DropRequest {
+          machine: machine,
+          slot: slot,
+        })?
       )?;
     let mut response = client.send(request)?;
-    let body: Value = response.json()?;
     return match response.status() {
       StatusCode::OK => Ok(()),
       _ => {
-        eprintln!("Couldn't drop: {}", body["error"].as_str().unwrap());
-        return Err(Box::new(APIError::BadFormat));
+        let text = response.text()?;
+        let message = serde_json::from_str::<ErrorResponse>(&text)
+          .map(|body| body.error)
+          .unwrap_or(text);
+        return Err(Box::new(APIError::ServerError(response.effective_uri().map(|uri| uri.clone()), message)));
       }
     };
   }
@@ -170,21 +218,15 @@ impl API {
       Request::get("https://sso.csh.rit.edu/auth/realms/csh/protocol/openid-connect/userinfo")
         .header("Authorization", self.get_token()?)
         .body(())?;
-    let response: Value = client.send(request)?.json()?;
-    let uid = response["preferred_username"].as_str().unwrap().to_string();
+    let user: User = client.send(request)?.json()?;
     let credit_request = Request::get(format!(
       "https://drink.csh.rit.edu/users/credits?uid={}",
-      uid
+      user.preferred_username
     ))
     .header("Authorization", self.get_token()?)
     .body(())?;
-    let credit_response: Value = client.send(credit_request)?.json()?;
-    Ok(
-      credit_response["user"]["drinkBalance"]
-        .as_str()
-        .unwrap()
-        .parse::<u64>()?,
-    ) // Coffee
+    let credit_response: CreditResponse = client.send(credit_request)?.json()?;
+    Ok(credit_response.user.drinkBalance)
   }
 
   pub fn get_machine_status(self: &mut API) -> Result<DrinkList, Box<dyn std::error::Error>> {
