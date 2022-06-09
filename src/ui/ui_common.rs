@@ -80,14 +80,14 @@ pub fn draw_logo() {
   );
 }
 
-pub fn print_instructions() {  
+pub fn print_instructions() {
   let (max_y, max_x) = get_bounds();
-  mvprintw(max_y - 2, max_x - 31, "Use the ARROW KEYS to navigate."); 
+  mvprintw(max_y - 2, max_x - 31, "Use the ARROW KEYS to navigate.");
 }
 
 pub fn do_color() {
   /* Start colors. */
   start_color();
-  init_pair(1, COLOR_RED, COLOR_BLACK);  
-  init_pair(2, COLOR_WHITE, COLOR_BLACK);  
+  init_pair(1, COLOR_RED, COLOR_BLACK);
+  init_pair(2, COLOR_WHITE, COLOR_BLACK);
 }

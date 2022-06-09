@@ -1,7 +1,6 @@
-use ncurses::*;
-use crate::ui::ui_common;
-use serde_json::{Map, Value};
 use crate::api;
+use crate::ui::ui_common;
+use ncurses::*;
 
 #[derive(Debug)]
 pub struct Item {
@@ -28,90 +27,105 @@ pub fn build_menu(api: &mut api::API, machine_status: &api::DrinkList, machine_i
 
   let machine = &machine_status.machines[machine_index];
 
-  mvwprintw(win, 1, 3, format!("{} -> SELECT A DRINK", machine.display_name).as_str());
+  mvwprintw(
+    win,
+    1,
+    3,
+    format!("{} -> SELECT A DRINK", machine.display_name).as_str(),
+  );
   mvwprintw(win, 2, 2, "==========================");
 
   // TODO: Get real amt of credits.
   let mut credits = api::API::get_credits(api);
-  mvwprintw(win, height - 2, width - 20, format!("Credits: {}", credits.unwrap()).as_str());
+  mvwprintw(
+    win,
+    height - 2,
+    width - 20,
+    format!("Credits: {}", credits.unwrap()).as_str(),
+  );
   wrefresh(win);
   refresh();
   //let requested_machine = getch();
   //TODO: something. Drop drink I guess.
 
   let slots = &machine.slots;
-  
+
   let slot_count = slots.len();
   let mut selected_slot: i32 = 0;
 
-  for n in 0..slot_count {
-      let slot = &slots[n];
-      if n as i32 == selected_slot {
-          wattron(win, A_REVERSE());
-      }
-      if slot.empty {
-        wattron(win, COLOR_PAIR(1));
-      }
-      if !slot.active {
-        wattron(win, A_DIM());
-      }
-      mvwprintw(
-          win, 3 + n as i32, 2,
-          format!("{} ({} credits)", slot.item.name, slot.item.price).as_str(),
-      );
-      wattroff(win, A_DIM());
-      wattroff(win, COLOR_PAIR(1));
-      wattroff(win, A_REVERSE());
+  for (n, slot) in slots.iter().enumerate() {
+    if n as i32 == selected_slot {
+      wattron(win, A_REVERSE());
+    }
+    if slot.empty {
+      wattron(win, COLOR_PAIR(1));
+    }
+    if !slot.active {
+      wattron(win, A_DIM());
+    }
+    mvwprintw(
+      win,
+      3 + n as i32,
+      2,
+      format!("{} ({} credits)", slot.item.name, slot.item.price).as_str(),
+    );
+    wattroff(win, A_DIM());
+    wattroff(win, COLOR_PAIR(1));
+    wattroff(win, A_REVERSE());
   }
 
   refresh();
   wrefresh(win);
-  
+
   let mut key = getch();
   loop {
     match key {
-        KEY_UP => {
-          if selected_slot > 0 {
-            selected_slot -= 1;
-          }
-        },
-        KEY_DOWN => {
-          if selected_slot < slot_count as i32 - 1 {
-            selected_slot += 1;
-          }
-        },
-        KEY_RIGHT => { 
-          //inventory::build_menu(&mut api, selected_machine);
-          if !slots[selected_slot as usize].empty && slots[selected_slot as usize].active {
-            match api.drop(machine.name.clone(), selected_slot as u8 + 1) { // The API returns a zero-indexed array of slots, but Mizu wants it to be 1-indexed 
-                Ok(()) => {
-                  vend();
-                  // Refresh credits in case we bought anything.
-                  credits = api::API::get_credits(api);
-                  wmove(win, height-2, width-20);
-                  wclrtoeol(win);
-                  mvwprintw(win, height-2, width-20, format!("Credits: {}", credits.unwrap()).as_str());
-                },
-                _ => deny()
-            }
-          }
-          else {
-            deny();
-          }
-        },
-        KEY_LEFT => {
-          ui_common::destroy_win(win);
-          return;
-        },
-        _ => {
-          refresh();
+      KEY_UP => {
+        if selected_slot > 0 {
+          selected_slot -= 1;
         }
+      }
+      KEY_DOWN => {
+        if selected_slot < slot_count as i32 - 1 {
+          selected_slot += 1;
+        }
+      }
+      KEY_RIGHT => {
+        //inventory::build_menu(&mut api, selected_machine);
+        if !slots[selected_slot as usize].empty && slots[selected_slot as usize].active {
+          match api.drop(machine.name.clone(), selected_slot as u8 + 1) {
+            // The API returns a zero-indexed array of slots, but Mizu wants it to be 1-indexed
+            Ok(()) => {
+              vend();
+              // Refresh credits in case we bought anything.
+              credits = api::API::get_credits(api);
+              wmove(win, height - 2, width - 20);
+              wclrtoeol(win);
+              mvwprintw(
+                win,
+                height - 2,
+                width - 20,
+                format!("Credits: {}", credits.unwrap()).as_str(),
+              );
+            }
+            _ => deny(),
+          }
+        } else {
+          deny();
+        }
+      }
+      KEY_LEFT => {
+        ui_common::destroy_win(win);
+        return;
+      }
+      _ => {
+        refresh();
+      }
     }
-    
-    for n in 0..slot_count {
-      let slot = &slots[n];
+
+    for (n, slot) in slots.iter().enumerate() {
       if n as i32 == selected_slot {
-          wattron(win, A_REVERSE());
+        wattron(win, A_REVERSE());
       }
       if slot.empty {
         wattron(win, COLOR_PAIR(1));
@@ -120,8 +134,10 @@ pub fn build_menu(api: &mut api::API, machine_status: &api::DrinkList, machine_i
         wattron(win, A_DIM());
       }
       mvwprintw(
-          win, 3 + n as i32, 2,
-          format!("{} ({} credits)", slot.item.name, slot.item.price).as_str(),
+        win,
+        3 + n as i32,
+        2,
+        format!("{} ({} credits)", slot.item.name, slot.item.price).as_str(),
       );
       wattroff(win, A_DIM());
       wattroff(win, COLOR_PAIR(1));
@@ -131,7 +147,7 @@ pub fn build_menu(api: &mut api::API, machine_status: &api::DrinkList, machine_i
     refresh();
     wrefresh(win);
 
-    key = getch(); 
+    key = getch();
   }
 }
 
@@ -180,4 +196,3 @@ pub fn deny() {
   ui_common::destroy_win(win);
   attroff(COLOR_PAIR(1));
 }
-

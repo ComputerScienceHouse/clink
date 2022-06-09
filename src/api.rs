@@ -1,12 +1,11 @@
 use http::status::StatusCode;
 use isahc::{auth::Authentication, prelude::*, HttpClient, Request};
 use rpassword::read_password;
-use serde_json::json;
-use serde_json::{Map, Value};
 use serde::Deserialize;
-use std::env;
+use serde_json::json;
+use serde_json::Value;
 use std::fmt;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::process::{Command, Stdio};
 use url::Url;
 use users::get_current_username;
@@ -57,18 +56,24 @@ impl std::error::Error for APIError {}
 
 impl fmt::Display for APIError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    return f.write_str(match self {
+    f.write_str(match self {
       APIError::Unauthorized => "Unauthorized (Did your Kerberos ticket expire?: `kinit`)",
       APIError::BadFormat => "BadFormat (The server sent data we didn't understand)",
-    });
+    })
   }
+}
+
+impl Default for API {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl API {
   pub fn new() -> API {
     let mut api = API { token: None };
-    api.get_token();
-    return api;
+    api.get_token().ok();
+    api
   }
   pub fn drop(self: &mut API, machine: String, slot: u8) -> Result<(), Box<dyn std::error::Error>> {
     let token = self.get_token()?;
@@ -109,13 +114,13 @@ impl API {
             return self.get_token();
           }
         };
-        let url = Url::parse(&location.to_str()?.replace("#", "?"))?;
+        let url = Url::parse(&location.to_str()?.replace('#', "?"))?;
 
         for (key, value) in url.query_pairs() {
           if key == "access_token" {
             let value = "Bearer ".to_owned() + &value.to_string();
             self.token = Some(value.to_string());
-            return Ok(value.to_string());
+            return Ok(value);
           }
         }
         return Err(Box::new(APIError::BadFormat));
@@ -126,7 +131,7 @@ impl API {
   fn login() {
     // Get credentials
     let username: Option<String> = std::env::var("CLINK_USERNAME")
-      .map(|it| Some(it))
+      .map(Some)
       .unwrap_or_else(|_| get_current_username().and_then(|it| it.into_string().ok()));
 
     let username: String = username.unwrap();
@@ -186,16 +191,21 @@ impl API {
     self.get_status_for_machine(None)
   }
 
-  pub fn get_status_for_machine(self: &mut API, machine: Option<&str>) -> Result<DrinkList, Box<dyn std::error::Error>> {
+  pub fn get_status_for_machine(
+    self: &mut API,
+    machine: Option<&str>,
+  ) -> Result<DrinkList, Box<dyn std::error::Error>> {
     let token = self.get_token()?;
     let client = HttpClient::new()?;
-    let request = Request::get(
-      format!("https://drink.csh.rit.edu/drinks{}", match machine {
+    let request = Request::get(format!(
+      "https://drink.csh.rit.edu/drinks{}",
+      match machine {
         Some(machine) => format!("?machine={}", machine),
         None => "".to_string(),
-      }))
-      .header("Authorization", token)
-      .body(())?;
+      }
+    ))
+    .header("Authorization", token)
+    .body(())?;
     Ok(client.send(request)?.json::<DrinkList>()?)
   }
 }

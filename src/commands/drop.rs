@@ -7,5 +7,5 @@ pub fn drop(matches: &ArgMatches, api: &mut API) -> Result<(), Box<dyn std::erro
   let machine = matches.value_of("machine").unwrap();
   let slot = matches.value_of("slot").unwrap();
 
-  return api.drop(machine.to_string(), slot.parse()?);
+  api.drop(machine.to_string(), slot.parse()?)
 }

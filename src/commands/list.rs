@@ -1,8 +1,5 @@
 use clap::ArgMatches;
 
-use serde_json::{Map, Value};
-
-use crate::api::APIError;
 use crate::api::API;
 
 pub fn list(matches: &ArgMatches, api: &mut API) -> Result<(), Box<dyn std::error::Error>> {
@@ -18,8 +15,8 @@ pub fn list(matches: &ArgMatches, api: &mut API) -> Result<(), Box<dyn std::erro
       if slot.empty {
         print!(" [EMPTY]");
       }
-      println!("");
+      println!();
     }
   }
-  return Ok(());
+  Ok(())
 }

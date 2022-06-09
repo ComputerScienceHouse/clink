@@ -9,14 +9,12 @@ fn main() {
   let matches = command!("CLI Drink")
     .about("Drops drinks from CSH vending machines")
     .subcommand(
-      Command::new("list")
-        .about("Display available slots")
-        .arg(
-          Arg::new("machine")
-            .index(1)
-            .help("Which machine should be listed?")
-            .required(false),
-        ),
+      Command::new("list").about("Display available slots").arg(
+        Arg::new("machine")
+          .index(1)
+          .help("Which machine should be listed?")
+          .required(false),
+      ),
     )
     .subcommand(
       Command::new("drop")
@@ -44,12 +42,12 @@ fn main() {
 fn process_command(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
   let mut api = api::API::new();
   if let Some(matches) = matches.subcommand_matches("list") {
-    return commands::list::list(matches, &mut api);
+    commands::list::list(matches, &mut api)
   } else if let Some(matches) = matches.subcommand_matches("drop") {
-    return commands::drop::drop(matches, &mut api);
+    commands::drop::drop(matches, &mut api)
   } else {
     cli(&mut api);
-    return Ok(());
+    Ok(())
   }
 }
 
