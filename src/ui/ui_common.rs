@@ -80,14 +80,40 @@ pub fn draw_logo() {
   );
 }
 
-pub fn print_instructions() {  
+pub fn print_instructions() {
   let (max_y, max_x) = get_bounds();
-  mvprintw(max_y - 2, max_x - 31, "Use the ARROW KEYS to navigate."); 
+  mvprintw(max_y - 2, max_x - 31, "Use the ARROW KEYS to navigate.");
 }
 
 pub fn do_color() {
   /* Start colors. */
   start_color();
-  init_pair(1, COLOR_RED, COLOR_BLACK);  
-  init_pair(2, COLOR_WHITE, COLOR_BLACK);  
+  init_pair(1, COLOR_RED, COLOR_BLACK);
+  init_pair(2, COLOR_WHITE, COLOR_BLACK);
+}
+
+const KEY_Q: i32 = 'q' as i32;
+const KEY_NEWLINE: i32 = '\n' as i32;
+const KEY_CTRL_C: i32 = 0x3;
+
+pub enum UserInput {
+  NavigateUp(i32),
+  NavigateDown(i32),
+  Activate(i32),
+  Back(i32),
+  Quit(i32),
+  Unknown(i32),
+}
+
+impl From<i32> for UserInput {
+  fn from(key: i32) -> Self {
+    match key {
+      KEY_UP => UserInput::NavigateUp(key),
+      KEY_DOWN => UserInput::NavigateDown(key),
+      KEY_RIGHT | KEY_NEWLINE => UserInput::Activate(key),
+      KEY_LEFT | KEY_Q | KEY_BACKSPACE => UserInput::Back(key),
+      KEY_CTRL_C => UserInput::Quit(key),
+      key => UserInput::Unknown(key),
+    }
+  }
 }
