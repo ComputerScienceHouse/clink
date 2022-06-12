@@ -11,7 +11,11 @@ pub struct Item {
   pub empty: bool,
 }
 
-pub fn build_menu(api: &mut api::API, machine_status: &api::DrinkList, machine_index: usize) -> bool {
+pub fn build_menu(
+  api: &mut api::API,
+  machine_status: &api::DrinkList,
+  machine_index: usize,
+) -> bool {
   /* Get the screen bounds. */
   let (max_y, max_x) = ui_common::get_bounds();
 
@@ -114,7 +118,7 @@ pub fn build_menu(api: &mut api::API, machine_status: &api::DrinkList, machine_i
               if deny() {
                 return true;
               }
-            },
+            }
           }
         } else if deny() {
           return true;

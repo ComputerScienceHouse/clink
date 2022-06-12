@@ -187,7 +187,11 @@ impl API {
       }
     }
   }
-  pub fn drop(self: &mut API, machine: String, slot: u8) -> Result<u64, Box<dyn std::error::Error>> {
+  pub fn drop(
+    self: &mut API,
+    machine: String,
+    slot: u8,
+  ) -> Result<u64, Box<dyn std::error::Error>> {
     self
       .authenticated_request::<DropResponse, _>(
         Request::post("https://drink.csh.rit.edu/drinks/drop"),
