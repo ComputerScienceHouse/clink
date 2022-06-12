@@ -82,7 +82,8 @@ pub fn draw_logo() {
 
 pub fn print_instructions() {
   let (max_y, max_x) = get_bounds();
-  mvprintw(max_y - 2, max_x - 31, "Use the ARROW KEYS to navigate.");
+  mvprintw(max_y - 3, max_x - 31, "Use the ARROW KEYS to navigate.");
+  mvprintw(max_y - 2, max_x - 43, "ENTER to select, Q to go back, ^C to close.");
 }
 
 pub fn do_color() {
