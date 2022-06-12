@@ -1,5 +1,6 @@
 use crate::api;
 use crate::ui::ui_common;
+use crate::ui::ui_common::UserInput;
 use ncurses::*;
 
 #[derive(Debug)]
@@ -10,7 +11,7 @@ pub struct Item {
   pub empty: bool,
 }
 
-pub fn build_menu(api: &mut api::API, machine_status: &api::DrinkList, machine_index: usize) {
+pub fn build_menu(api: &mut api::API, machine_status: &api::DrinkList, machine_index: usize) -> bool {
   /* Get the screen bounds. */
   let (max_y, max_x) = ui_common::get_bounds();
 
@@ -79,25 +80,27 @@ pub fn build_menu(api: &mut api::API, machine_status: &api::DrinkList, machine_i
 
   let mut key = getch();
   loop {
-    match key {
-      KEY_UP => {
+    match key.into() {
+      UserInput::NavigateUp(_) => {
         if selected_slot > 0 {
           selected_slot -= 1;
         }
       }
-      KEY_DOWN => {
+      UserInput::NavigateDown(_) => {
         if selected_slot < slot_count as i32 - 1 {
           selected_slot += 1;
         }
       }
-      KEY_RIGHT => {
+      UserInput::Activate(_) => {
         //inventory::build_menu(&mut api, selected_machine);
         if !slots[selected_slot as usize].empty && slots[selected_slot as usize].active {
           match api.drop(machine.name.clone(), selected_slot as u8 + 1) {
             // The API returns a zero-indexed array of slots, but Mizu wants it to be 1-indexed
             Ok(new_credits) => {
               credits = new_credits;
-              vend();
+              if vend() {
+                return true;
+              }
               wmove(win, height - 2, width - 20);
               wclrtoeol(win);
               mvwprintw(
@@ -107,15 +110,23 @@ pub fn build_menu(api: &mut api::API, machine_status: &api::DrinkList, machine_i
                 format!("Credits: {}", credits).as_str(),
               );
             }
-            _ => deny(),
+            _ => {
+              if deny() {
+                return true;
+              }
+            },
           }
-        } else {
-          deny();
+        } else if deny() {
+          return true;
         }
       }
-      KEY_LEFT => {
+      UserInput::Back(_) => {
         ui_common::destroy_win(win);
-        return;
+        return false;
+      }
+      UserInput::Quit(_) => {
+        ui_common::destroy_win(win);
+        return true;
       }
       _ => {
         refresh();
@@ -150,7 +161,7 @@ pub fn build_menu(api: &mut api::API, machine_status: &api::DrinkList, machine_i
   }
 }
 
-pub fn vend() {
+pub fn vend() -> bool {
   /* Get the screen bounds. */
   let mut max_x = 0;
   let mut max_y = 0;
@@ -167,11 +178,12 @@ pub fn vend() {
   mvwprintw(win, 3, 3, "Press any key to continue");
   wrefresh(win);
   refresh();
-  getch();
+  let key = getch();
   ui_common::destroy_win(win);
+  matches!(key.into(), UserInput::Quit(_))
 }
 
-pub fn deny() {
+pub fn deny() -> bool {
   attron(COLOR_PAIR(1));
   /* Get the screen bounds. */
   let mut max_x = 0;
@@ -190,8 +202,9 @@ pub fn deny() {
   mvwprintw(win, 3, 3, "Press any key to continue");
   wrefresh(win);
   refresh();
-  getch();
+  let key = getch();
   wattroff(win, COLOR_PAIR(1));
   ui_common::destroy_win(win);
   attroff(COLOR_PAIR(1));
+  matches!(key.into(), UserInput::Quit(_))
 }

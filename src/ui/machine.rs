@@ -2,6 +2,7 @@ use crate::api;
 use crate::api::APIError;
 use crate::ui::inventory;
 use crate::ui::ui_common;
+use crate::ui::ui_common::UserInput;
 use ncurses::*;
 
 pub fn pick_machine(api: &mut api::API) -> Result<(), Box<dyn std::error::Error>> {
@@ -68,19 +69,21 @@ pub fn pick_machine(api: &mut api::API) -> Result<(), Box<dyn std::error::Error>
   ui_common::refresh_win(win);
   let mut key = getch();
   loop {
-    match key {
-      KEY_UP => {
+    match key.into() {
+      UserInput::NavigateUp(_) => {
         if selected_machine > 0 {
           selected_machine -= 1;
         }
       }
-      KEY_DOWN => {
+      UserInput::NavigateDown(_) => {
         if selected_machine < machine_count - 1 {
           selected_machine += 1;
         }
       }
-      KEY_RIGHT => {
-        inventory::build_menu(api, &machine_status, selected_machine);
+      UserInput::Activate(_) => {
+        if inventory::build_menu(api, &machine_status, selected_machine) {
+          break;
+        }
         // Refresh credits in case we bought anything.
         credits = match api::API::get_credits(api) {
           Ok(credits) => credits,
@@ -101,7 +104,7 @@ pub fn pick_machine(api: &mut api::API) -> Result<(), Box<dyn std::error::Error>
         refresh();
         wrefresh(win);
       }
-      KEY_LEFT => {
+      UserInput::Back(_) | UserInput::Quit(_) => {
         break;
       }
       _ => {
