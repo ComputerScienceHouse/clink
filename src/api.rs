@@ -48,7 +48,7 @@ pub struct Slot {
   pub empty: bool,
   pub item: Item,
   pub machine: u64,
-  pub number: u64,
+  pub number: u8,
 }
 
 #[derive(Deserialize, Debug, Clone)]

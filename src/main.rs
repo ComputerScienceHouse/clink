@@ -54,20 +54,6 @@ fn process_command(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>
   } else if let Some(matches) = matches.subcommand_matches("token") {
     commands::token::token(matches, &mut api)
   } else {
-    cli(&mut api);
-    Ok(())
+    ui::ui_common::launch(api)
   }
-}
-
-fn cli(api: &mut api::API) {
-  ui::ui_common::launch();
-  match ui::machine::pick_machine(api) {
-    Ok(_) => {
-      ui::ui_common::end();
-    }
-    Err(err) => {
-      ui::ui_common::end();
-      eprintln!("{}", err);
-    }
-  };
 }

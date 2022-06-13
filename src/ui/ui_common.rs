@@ -1,124 +1,148 @@
-use ncurses::*;
+use crate::api::{DrinkList, Machine, Slot, API};
+use cursive;
+use cursive::align::HAlign;
+use cursive::traits::*;
+use cursive::view::IntoBoxedView;
+use cursive::views::{Dialog, OnEventView, SelectView, TextView};
+use cursive::{Cursive, CursiveRunnable};
+use std::sync::{Arc, Mutex};
+use std::thread;
 
-pub fn get_bounds() -> (i32, i32) {
-  /* Get the screen bounds. */
-  let mut max_x = 0;
-  let mut max_y = 0;
-  getmaxyx(stdscr(), &mut max_y, &mut max_x);
-  (max_y, max_x)
+struct ModelData {
+  credits: Option<u64>,
+  machines: Option<DrinkList>,
+  machine: Option<Machine>,
+  api: API,
 }
 
-pub fn launch() {
-  /* Setup ncurses. */
-  initscr();
-  raw();
+// Here we use a single mutex, but bigger models might
+// prefer individual mutexes for different variables.
+type Model = Arc<Mutex<ModelData>>;
 
-  /* Allow for extended keyboard (like F1). */
-  keypad(stdscr(), true);
-  noecho();
-
-  /* Invisible cursor. */
-  curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
-
-  /* Colors. */
-  do_color();
-  attron(COLOR_PAIR(2));
-
-  /* Update the screen. */
-  refresh();
+pub fn launch(api: API) -> Result<(), Box<dyn std::error::Error>> {
+  let mut siv = cursive::default();
+  let model = Arc::new(Mutex::new(ModelData {
+    credits: None,
+    machines: None,
+    machine: None,
+    api,
+  }));
+  machine_list(Arc::clone(&model), &mut siv)?;
+  siv.run();
+  Ok(())
 }
 
-pub fn end() {
-  endwin();
-}
-
-pub fn create_win(y: i32, x: i32, height: i32, width: i32) -> WINDOW {
-  let win = newwin(height, width, y, x);
-  box_(win, 0, 0);
-  wrefresh(win);
-  win
-}
-
-pub fn refresh_win(win: WINDOW) {
-  box_(win, 0, 0);
-  wrefresh(win);
-}
-
-pub fn destroy_win(win: WINDOW) {
-  let ch = ' ' as chtype;
-  werase(win);
-  wborder(win, ch, ch, ch, ch, ch, ch, ch, ch);
-  wrefresh(win);
-  delwin(win);
-}
-
-pub fn draw_logo() {
-  let (max_y, max_x) = get_bounds();
-
-  mvprintw(
-    max_y - 20,
-    max_x - 20,
-    concat!(
-      "\n'{tttttttttttttttttttttttt^ *tttt\\ \n",
-      ":@@@@@@@@@@@@@@@@@@@@@@@@@m d@@@@N`\n",
-      ":@@@@@@@@@@@@@@@@@@@@@@@@@m d@@@@N`\n",
-      ":@@@@@m:::::::::::::rQ@@@@m d@@@@N`\n",
-      ":@@@@@] vBBBBBBBBBN,`]oooo* d@@@@N`\n",
-      ":@@@@@] o@@@NNNQ@@@\"`ueeee| d@@@@N`\n",
-      ":@@@@@] o@@&   ,||?`'Q@@@@m d@@@@N`\n",
-      ":@@@@@] o@@Q]tt{{{z-'Q@@@@QOQ@@@@N`\n",
-      ":@@@@@] o@@@@@@@@@@\"'Q@@@@@@@@@@@N`\n",
-      ":@@@@@] ';;;;;;y@@@\"'Q@@@@N7Q@@@@N`\n",
-      ":@@@@@] \\KKe^^^a@@@\"'Q@@@@m d@@@@N`\n",
-      ":@@@@@] o@@@@@@@@@@\" _::::' d@@@@N`\n",
-      ":@@@@@] raaaaaaaaay..H####} d@@@@N`\n",
-      ":@@@@@#eeeeeeeeeeeeek@@@@@m d@@@@N`\n",
-      ":@@@@@@@@@@@@@@@@@@@@@@@@@m d@@@@N`\n",
-      ":@@@@@@@@@@@@@@@@@@@@@@@@@e K@@@@W`\n",
-      " .........................` `....-"
-    ),
-  );
-}
-
-pub fn print_instructions() {
-  let (max_y, max_x) = get_bounds();
-  mvprintw(max_y - 3, max_x - 31, "Use the ARROW KEYS to navigate.");
-  mvprintw(
-    max_y - 2,
-    max_x - 43,
-    "ENTER to select, Q to go back, ^C to close.",
-  );
-}
-
-pub fn do_color() {
-  /* Start colors. */
-  start_color();
-  init_pair(1, COLOR_RED, COLOR_BLACK);
-  init_pair(2, COLOR_WHITE, COLOR_BLACK);
-}
-
-const KEY_Q: i32 = 'q' as i32;
-const KEY_NEWLINE: i32 = '\n' as i32;
-const KEY_CTRL_C: i32 = 0x3;
-
-pub enum UserInput {
-  NavigateUp(i32),
-  NavigateDown(i32),
-  Activate(i32),
-  Back(i32),
-  Quit(i32),
-  Unknown(i32),
-}
-
-impl From<i32> for UserInput {
-  fn from(key: i32) -> Self {
-    match key {
-      KEY_UP => UserInput::NavigateUp(key),
-      KEY_DOWN => UserInput::NavigateDown(key),
-      KEY_RIGHT | KEY_NEWLINE => UserInput::Activate(key),
-      KEY_LEFT | KEY_Q | KEY_BACKSPACE => UserInput::Back(key),
-      KEY_CTRL_C => UserInput::Quit(key),
-      key => UserInput::Unknown(key),
+fn get_drinks(model: &Model) -> Result<DrinkList, Box<dyn std::error::Error>> {
+  let mut model = model.lock().unwrap();
+  match model.machines {
+    Some(ref machines) => Ok(machines.clone()),
+    None => {
+      let machines = model.api.get_status_for_machine(None)?;
+      model.machines = Some(machines.clone());
+      Ok(machines)
     }
   }
+}
+
+fn get_credits(model: &Model) -> Result<u64, Box<dyn std::error::Error>> {
+  let mut model = model.lock().unwrap();
+  match model.credits {
+    Some(credits) => Ok(credits),
+    None => {
+      let credits = model.api.get_credits()?;
+      model.credits = Some(credits);
+      Ok(credits)
+    }
+  }
+}
+
+fn machine_list(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn std::error::Error>> {
+  let mut select = SelectView::new().h_align(HAlign::Center).autojump();
+
+  let drink_list = get_drinks(&model)?;
+  for machine in drink_list.machines {
+    select.add_item(machine.display_name.clone(), machine);
+  }
+
+  select.set_on_submit(move |siv: &mut Cursive, machine: &Machine| {
+    item_list(Arc::clone(&model), siv, machine)
+  });
+
+  let select = OnEventView::new(select);
+
+  siv.add_layer(
+    Dialog::around(select.scrollable())
+      .title("Select a Machine")
+      .button("Quit", |siv| siv.quit()),
+  );
+  Ok(())
+}
+
+fn item_list(
+  model: Model,
+  siv: &mut Cursive,
+  machine: &Machine,
+) -> Result<(), Box<dyn std::error::Error>> {
+  model.lock().unwrap().machine = Some(machine.clone());
+  let mut select = SelectView::new().h_align(HAlign::Center).autojump();
+  for slot in machine.slots.clone() {
+    select.add_item(
+      format!("{} ({} Credits)", slot.item.name, slot.item.price),
+      slot,
+    );
+  }
+  select
+    .set_on_submit(move |siv: &mut Cursive, slot: &Slot| drop_drink(Arc::clone(&model), siv, slot));
+  let select = OnEventView::new(select);
+  siv.add_layer(
+    Dialog::around(select.scrollable())
+      .title(machine.display_name.clone())
+      .button("Cancel", |siv| {
+        siv.pop_layer();
+      }),
+  );
+  Ok(())
+}
+
+fn drop_drink(model: Model, siv: &mut Cursive, slot: &Slot) {
+  let machine_id = model.lock().unwrap().machine.as_ref().unwrap().name.clone();
+  let dialog = Dialog::around(TextView::new("Dropping a drink...")).title("Please Wait");
+  siv.add_layer(dialog);
+  let cb_sink = siv.cb_sink().clone();
+  let slot_number = slot.number;
+  thread::spawn(
+    move || match model.lock().unwrap().api.drop(machine_id, slot_number) {
+      Ok(credits) => {
+        model.lock().unwrap().credits = Some(credits);
+        let message = format!("Enjoy! You now have {} credits", credits);
+        cb_sink
+          .send(Box::new(move |siv| {
+            siv.pop_layer();
+            siv.add_layer(
+              Dialog::around(TextView::new(message))
+                .button("Done", |siv| {
+                  siv.pop_layer();
+                })
+                .title("Dropped Drink"),
+            );
+          }))
+          .unwrap();
+      }
+      Err(err) => {
+        let message = format!("Couldn't drop a drink: {:?}", err);
+        cb_sink
+          .send(Box::new(move |siv| {
+            siv.pop_layer();
+            siv.add_layer(
+              Dialog::around(TextView::new(message))
+                .button("Done", |siv| {
+                  siv.pop_layer();
+                })
+                .title("Error"),
+            );
+          }))
+          .unwrap();
+      }
+    },
+  );
 }
