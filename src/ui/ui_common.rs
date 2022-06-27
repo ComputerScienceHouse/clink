@@ -1,17 +1,16 @@
 use crate::api::{DrinkList, Machine, Slot, API};
+use crate::ui::store::{ListenerView, Store};
 use cursive;
-use cursive::align::HAlign;
+use cursive::align::{HAlign, VAlign};
 use cursive::traits::*;
-use cursive::view::IntoBoxedView;
 use cursive::views::{Dialog, OnEventView, SelectView, TextView};
 use cursive::{Cursive, CursiveRunnable};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
 struct ModelData {
-  credits: Option<u64>,
-  machines: Option<DrinkList>,
-  machine: Option<Machine>,
+  credits: Store<Option<u64>>,
+  machines: Store<Option<DrinkList>>,
   api: API,
 }
 
@@ -22,56 +21,115 @@ type Model = Arc<Mutex<ModelData>>;
 pub fn launch(api: API) -> Result<(), Box<dyn std::error::Error>> {
   let mut siv = cursive::default();
   let model = Arc::new(Mutex::new(ModelData {
-    credits: None,
-    machines: None,
-    machine: None,
+    credits: Store::new(None),
+    machines: Store::new(None),
     api,
   }));
+
+  credit_count(Arc::clone(&model), &mut siv)?;
+
   machine_list(Arc::clone(&model), &mut siv)?;
+
+  {
+    let model = Arc::clone(&model);
+    let cb_sink = siv.cb_sink().clone();
+    thread::spawn(
+      move || match model.lock().unwrap().api.get_status_for_machine(None) {
+        Ok(machine_list) => {
+          let model = Arc::clone(&model);
+          cb_sink
+            .send(Box::new(move |siv| {
+              model.lock().unwrap().machines.set(siv, Some(machine_list));
+            }))
+            .unwrap();
+        }
+        Err(err) => {
+          panic!("Couldn't get drink list: {:?}", err);
+        }
+      },
+    );
+  }
+
+  {
+    let model = Arc::clone(&model);
+    let cb_sink = siv.cb_sink().clone();
+    thread::spawn(move || match model.lock().unwrap().api.get_credits() {
+      Ok(credit_count) => {
+        let model = Arc::clone(&model);
+        cb_sink
+          .send(Box::new(move |siv| {
+            model.lock().unwrap().credits.set(siv, Some(credit_count));
+          }))
+          .unwrap();
+      }
+      Err(err) => {
+        panic!("Couldn't get credits: {:?}", err);
+      }
+    });
+  }
+
   siv.run();
   Ok(())
 }
 
-fn get_drinks(model: &Model) -> Result<DrinkList, Box<dyn std::error::Error>> {
-  let mut model = model.lock().unwrap();
-  match model.machines {
-    Some(ref machines) => Ok(machines.clone()),
-    None => {
-      let machines = model.api.get_status_for_machine(None)?;
-      model.machines = Some(machines.clone());
-      Ok(machines)
-    }
-  }
-}
-
-fn get_credits(model: &Model) -> Result<u64, Box<dyn std::error::Error>> {
-  let mut model = model.lock().unwrap();
-  match model.credits {
-    Some(credits) => Ok(credits),
-    None => {
-      let credits = model.api.get_credits()?;
-      model.credits = Some(credits);
-      Ok(credits)
-    }
-  }
+fn credit_count(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn std::error::Error>> {
+  let credit_text = TextView::empty()
+    .h_align(HAlign::Right)
+    .v_align(VAlign::Bottom);
+  let mut listener_view = ListenerView::new(
+    credit_text,
+    &model.lock().unwrap().credits,
+    |view, credits| {
+      let credit_text = view.downcast_mut::<TextView>().unwrap();
+      match credits {
+        Some(credits) => credit_text.set_content(format!("Credits: {}", credits)),
+        None => credit_text.set_content("Loading..."),
+      };
+    },
+  );
+  model
+    .lock()
+    .unwrap()
+    .credits
+    .use_store(siv, &mut listener_view);
+  siv.screen_mut().add_fullscreen_layer(listener_view);
+  Ok(())
 }
 
 fn machine_list(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn std::error::Error>> {
-  let mut select = SelectView::new().h_align(HAlign::Center).autojump();
+  let mut select: SelectView<Machine> = SelectView::new().h_align(HAlign::Center).autojump();
 
-  let drink_list = get_drinks(&model)?;
-  for machine in drink_list.machines {
-    select.add_item(machine.display_name.clone(), machine);
+  {
+    let model = Arc::clone(&model);
+    select.set_on_submit(move |siv: &mut Cursive, machine: &Machine| {
+      item_list(Arc::clone(&model), siv, machine.id).unwrap();
+    });
   }
 
-  select.set_on_submit(move |siv: &mut Cursive, machine: &Machine| {
-    item_list(Arc::clone(&model), siv, machine)
-  });
+  let mut listener_view = ListenerView::new(
+    select,
+    &model.lock().unwrap().machines,
+    |view, machine_list| {
+      // panic rationale: failing this downcast indicates a bug in the program
+      let select = view.downcast_mut::<SelectView<Machine>>().unwrap();
+      select.clear();
+      if let Some(machine_list) = machine_list {
+        for machine in &machine_list.machines {
+          select.add_item(machine.display_name.clone(), machine.clone());
+        }
+      }
+    },
+  );
+  model
+    .lock()
+    .unwrap()
+    .machines
+    .use_store(siv, &mut listener_view);
 
-  let select = OnEventView::new(select);
+  let listener_view = OnEventView::new(listener_view);
 
   siv.add_layer(
-    Dialog::around(select.scrollable())
+    Dialog::around(listener_view.scrollable())
       .title("Select a Machine")
       .button("Quit", |siv| siv.quit()),
   );
@@ -81,22 +139,58 @@ fn machine_list(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn s
 fn item_list(
   model: Model,
   siv: &mut Cursive,
-  machine: &Machine,
+  machine_id: u64,
 ) -> Result<(), Box<dyn std::error::Error>> {
-  model.lock().unwrap().machine = Some(machine.clone());
-  let mut select = SelectView::new().h_align(HAlign::Center).autojump();
-  for slot in machine.slots.clone() {
-    select.add_item(
-      format!("{} ({} Credits)", slot.item.name, slot.item.price),
-      slot,
-    );
+  let mut select: SelectView<Slot> = SelectView::new().h_align(HAlign::Center).autojump();
+  {
+    let model = Arc::clone(&model);
+    select.set_on_submit(move |siv: &mut Cursive, slot: &Slot| {
+      drop_drink(Arc::clone(&model), siv, slot)
+    });
   }
-  select
-    .set_on_submit(move |siv: &mut Cursive, slot: &Slot| drop_drink(Arc::clone(&model), siv, slot));
-  let select = OnEventView::new(select);
+  let mut listener_view = ListenerView::new(
+    select,
+    &model.lock().unwrap().machines,
+    move |view, machine_list| {
+      let select = view.downcast_mut::<SelectView<Slot>>().unwrap();
+      let machine = machine_list
+        .as_ref()
+        .unwrap()
+        .machines
+        .iter()
+        .find(|machine| machine.id == machine_id)
+        .unwrap();
+
+      select.clear();
+      for slot in &machine.slots {
+        select.add_item(
+          format!("{} ({} Credits)", slot.item.name, slot.item.price),
+          slot.clone(),
+        );
+      }
+    },
+  );
+  model
+    .lock()
+    .unwrap()
+    .machines
+    .use_store(siv, &mut listener_view);
+
+  let listener_view = OnEventView::new(listener_view);
+
+  let machine_name = {
+    let machines = &model.lock().unwrap().machines;
+    let machines = machines.get().as_ref().unwrap();
+    let machine = machines
+      .machines
+      .iter()
+      .find(|machine| machine.id == machine_id)
+      .unwrap();
+    machine.display_name.clone()
+  };
   siv.add_layer(
-    Dialog::around(select.scrollable())
-      .title(machine.display_name.clone())
+    Dialog::around(listener_view.scrollable())
+      .title(machine_name)
       .button("Cancel", |siv| {
         siv.pop_layer();
       }),
@@ -105,7 +199,20 @@ fn item_list(
 }
 
 fn drop_drink(model: Model, siv: &mut Cursive, slot: &Slot) {
-  let machine_id = model.lock().unwrap().machine.as_ref().unwrap().name.clone();
+  let machine_id = slot.machine;
+  let machine_id = model
+    .lock()
+    .unwrap()
+    .machines
+    .get()
+    .as_ref()
+    .unwrap()
+    .machines
+    .iter()
+    .find(move |machine| machine.id == machine_id)
+    .unwrap()
+    .name
+    .clone();
   let dialog = Dialog::around(TextView::new("Dropping a drink...")).title("Please Wait");
   siv.add_layer(dialog);
   let cb_sink = siv.cb_sink().clone();
@@ -113,10 +220,11 @@ fn drop_drink(model: Model, siv: &mut Cursive, slot: &Slot) {
   thread::spawn(
     move || match model.lock().unwrap().api.drop(machine_id, slot_number) {
       Ok(credits) => {
-        model.lock().unwrap().credits = Some(credits);
+        let model = Arc::clone(&model);
         let message = format!("Enjoy! You now have {} credits", credits);
         cb_sink
           .send(Box::new(move |siv| {
+            model.lock().unwrap().credits.set(siv, Some(credits));
             siv.pop_layer();
             siv.add_layer(
               Dialog::around(TextView::new(message))

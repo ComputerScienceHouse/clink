@@ -107,6 +107,7 @@ dependencies = [
  "serde_json",
  "url",
  "users",
+ "uuid",
 ]
 
 [[package]]
@@ -1011,6 +1012,15 @@ checksum = "24cc0f6d6f267b73e5a2cadf007ba8f9bc39c6a6f9666f8cf25ea809a153b032"
 dependencies = [
  "libc",
  "log",
+]
+
+[[package]]
+name = "uuid"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd6469f4314d5f1ffec476e05f17cc9a78bc7a27a6a857842170bdf8d6f98d2f"
+dependencies = [
+ "getrandom",
 ]
 
 [[package]]
