@@ -17,10 +17,10 @@ struct ModelData {
   api: API,
 }
 
-// Here we use a single mutex, but bigger models might
-// prefer individual mutexes for different variables.
+// This should really get cleaned up:
 type Model = Arc<Mutex<ModelData>>;
 
+/// Entrypoint, CLI will call this when we start up!
 pub fn launch(api: API) -> Result<(), Box<dyn std::error::Error>> {
   let mut siv = cursive::default();
   let model = Arc::new(Mutex::new(ModelData {
@@ -28,6 +28,9 @@ pub fn launch(api: API) -> Result<(), Box<dyn std::error::Error>> {
     machines: Store::new(None),
     api,
   }));
+
+  // Nice to have
+  siv.add_global_callback('q', |s| s.quit());
 
   csh_logo(&mut siv);
 
@@ -77,6 +80,7 @@ pub fn launch(api: API) -> Result<(), Box<dyn std::error::Error>> {
   Ok(())
 }
 
+/// Draws CSH logo in the corner
 fn csh_logo(siv: &mut CursiveRunnable) {
   let logo = TextView::new(include_str!("./logo.txt"))
     .h_align(HAlign::Right)
@@ -85,6 +89,7 @@ fn csh_logo(siv: &mut CursiveRunnable) {
   siv.screen_mut().add_transparent_layer(logo.full_screen());
 }
 
+/// Draws credit counter in top-left
 fn credit_count(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn std::error::Error>> {
   let credit_text = TextView::empty();
   let mut listener_view = ListenerView::new(
@@ -109,6 +114,7 @@ fn credit_count(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn s
   Ok(())
 }
 
+/// Draws SelectView with list of available machines
 fn machine_list(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn std::error::Error>> {
   let mut select: SelectView<Machine> = SelectView::new().h_align(HAlign::Center).autojump();
 
@@ -161,6 +167,7 @@ fn machine_list(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn s
   Ok(())
 }
 
+/// Draws list of items available for purchase
 fn item_list(
   model: Model,
   siv: &mut Cursive,
@@ -233,6 +240,8 @@ fn item_list(
   Ok(())
 }
 
+/// Fires off a drop and shows a message to the user
+/// Pops off when finished
 fn drop_drink(model: Model, siv: &mut Cursive, slot: &Slot) {
   let machine_id = slot.machine;
   let machine_id = model
