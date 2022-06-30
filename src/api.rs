@@ -6,12 +6,15 @@ use serde::{de, Deserialize, Serialize};
 use serde_json;
 use std::fmt;
 use std::io::Write;
+use std::ops::DerefMut;
 use std::process::{Command, Stdio};
+use std::sync::Arc;
+use std::sync::Mutex;
 use url::Url;
 use users::get_current_username;
 
 pub struct API {
-  token: Option<String>,
+  token: Arc<Mutex<Option<String>>>,
 }
 
 #[derive(Debug)]
@@ -145,14 +148,24 @@ impl<T: Serialize> From<APIBody<T>> for isahc::Body {
   }
 }
 
+impl Clone for API {
+  fn clone(&self) -> Self {
+    Self {
+      token: Arc::clone(&self.token),
+    }
+  }
+}
+
 impl API {
   pub fn new() -> API {
-    let mut api = API { token: None };
-    api.get_token().ok();
-    api
+    // We should find a way to spin this off in a thread
+    // api.get_token().ok();
+    API {
+      token: Arc::new(Mutex::new(None)),
+    }
   }
   fn authenticated_request<O, I>(
-    self: &mut API,
+    &self,
     builder: http::request::Builder,
     input: APIBody<I>,
   ) -> Result<O, Box<dyn std::error::Error>>
@@ -186,11 +199,7 @@ impl API {
       }
     }
   }
-  pub fn drop(
-    self: &mut API,
-    machine: String,
-    slot: u8,
-  ) -> Result<u64, Box<dyn std::error::Error>> {
+  pub fn drop(&self, machine: String, slot: u8) -> Result<u64, Box<dyn std::error::Error>> {
     self
       .authenticated_request::<DropResponse, _>(
         Request::post("https://drink.csh.rit.edu/drinks/drop"),
@@ -199,8 +208,8 @@ impl API {
       .map(|drop| drop.drinkBalance)
   }
 
-  pub fn get_token(self: &mut API) -> Result<String, Box<dyn std::error::Error>> {
-    return match &self.token {
+  fn take_token(&self, token: &mut Option<String>) -> Result<String, Box<dyn std::error::Error>> {
+    match token {
       Some(token) => Ok(token.to_string()),
       None => {
         let response = Request::get("https://sso.csh.rit.edu/auth/realms/csh/protocol/openid-connect/auth?client_id=clidrink&redirect_uri=drink%3A%2F%2Fcallback&response_type=token%20id_token&scope=openid%20profile%20drink_balance&state=&nonce=")
@@ -210,7 +219,7 @@ impl API {
           Some(location) => location,
           None => {
             API::login();
-            return self.get_token();
+            return self.take_token(token);
           }
         };
         let url = Url::parse(&location.to_str()?.replace('#', "?"))?;
@@ -218,13 +227,18 @@ impl API {
         for (key, value) in url.query_pairs() {
           if key == "access_token" {
             let value = format!("Bearer {}", value);
-            self.token = Some(value.clone());
+            *token = Some(value.clone());
             return Ok(value);
           }
         }
-        return Err(Box::new(APIError::BadFormat));
+        Err(Box::new(APIError::BadFormat))
       }
-    };
+    }
+  }
+
+  pub fn get_token(&self) -> Result<String, Box<dyn std::error::Error>> {
+    let mut token = self.token.lock().unwrap();
+    self.take_token(token.deref_mut())
   }
 
   fn login() {
@@ -263,7 +277,7 @@ impl API {
     println!("...\n\n");
   }
 
-  pub fn get_credits(self: &mut API) -> Result<u64, Box<dyn std::error::Error>> {
+  pub fn get_credits(&self) -> Result<u64, Box<dyn std::error::Error>> {
     // Can also be used to get other user information
     let user: User = self.authenticated_request(
       Request::get("https://sso.csh.rit.edu/auth/realms/csh/protocol/openid-connect/userinfo"),
@@ -279,12 +293,12 @@ impl API {
     Ok(credit_response.user.drinkBalance)
   }
 
-  pub fn get_machine_status(self: &mut API) -> Result<DrinkList, Box<dyn std::error::Error>> {
+  pub fn get_machine_status(&self) -> Result<DrinkList, Box<dyn std::error::Error>> {
     self.get_status_for_machine(None)
   }
 
   pub fn get_status_for_machine(
-    self: &mut API,
+    &self,
     machine: Option<&str>,
   ) -> Result<DrinkList, Box<dyn std::error::Error>> {
     self.authenticated_request(

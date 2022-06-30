@@ -38,11 +38,12 @@ pub fn launch(api: API) -> Result<(), Box<dyn std::error::Error>> {
 
   machine_list(Arc::clone(&model), &mut siv)?;
 
-  {
+  let status_handle = {
     let model = Arc::clone(&model);
     let cb_sink = siv.cb_sink().clone();
-    thread::spawn(
-      move || match model.lock().unwrap().api.get_status_for_machine(None) {
+    thread::spawn(move || {
+      let api = model.lock().unwrap().api.clone();
+      match api.get_status_for_machine(None) {
         Ok(machine_list) => {
           let model = Arc::clone(&model);
           cb_sink
@@ -54,29 +55,35 @@ pub fn launch(api: API) -> Result<(), Box<dyn std::error::Error>> {
         Err(err) => {
           panic!("Couldn't get drink list: {:?}", err);
         }
-      },
-    );
-  }
+      }
+    })
+  };
 
-  {
+  let credits_handle = {
     let model = Arc::clone(&model);
     let cb_sink = siv.cb_sink().clone();
-    thread::spawn(move || match model.lock().unwrap().api.get_credits() {
-      Ok(credit_count) => {
-        let model = Arc::clone(&model);
-        cb_sink
-          .send(Box::new(move |siv| {
-            model.lock().unwrap().credits.set(siv, Some(credit_count));
-          }))
-          .unwrap();
+    thread::spawn(move || {
+      let api = model.lock().unwrap().api.clone();
+      match api.get_credits() {
+        Ok(credit_count) => {
+          let model = Arc::clone(&model);
+          cb_sink
+            .send(Box::new(move |siv| {
+              model.lock().unwrap().credits.set(siv, Some(credit_count));
+            }))
+            .unwrap();
+        }
+        Err(err) => {
+          panic!("Couldn't get credits: {:?}", err);
+        }
       }
-      Err(err) => {
-        panic!("Couldn't get credits: {:?}", err);
-      }
-    });
-  }
+    })
+  };
 
   siv.run();
+
+  status_handle.join().unwrap();
+  credits_handle.join().unwrap();
   Ok(())
 }
 
