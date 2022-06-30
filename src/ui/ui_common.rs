@@ -1,8 +1,10 @@
-use crate::api::{DrinkList, Machine, Slot, API};
+use crate::api::{APIError, DrinkList, Machine, Slot, API};
 use crate::ui::store::{ListenerView, Store};
 use cursive;
 use cursive::align::{HAlign, VAlign};
+use cursive::theme::{BaseColor, Color, ColorStyle, ColorType, Effect, Style};
 use cursive::traits::*;
+use cursive::utils::span::SpannedString;
 use cursive::views::{Dialog, OnEventView, SelectView, TextView};
 use cursive::{Cursive, CursiveRunnable};
 use std::sync::{Arc, Mutex};
@@ -164,7 +166,17 @@ fn item_list(
       select.clear();
       for slot in &machine.slots {
         select.add_item(
-          format!("{} ({} Credits)", slot.item.name, slot.item.price),
+          SpannedString::styled(
+            format!("{} ({} Credits)", slot.item.name, slot.item.price),
+            match !slot.active || slot.empty || slot.count.map(|c| c == 0).unwrap_or(false) {
+              true => Style::from(ColorStyle::front(ColorType::Color(Color::Light(
+                BaseColor::Red,
+              ))))
+              .combine(Effect::Dim)
+              .combine(Effect::Bold),
+              false => Style::default(),
+            },
+          ),
           slot.clone(),
         );
       }
@@ -237,7 +249,13 @@ fn drop_drink(model: Model, siv: &mut Cursive, slot: &Slot) {
           .unwrap();
       }
       Err(err) => {
-        let message = format!("Couldn't drop a drink: {:?}", err);
+        let message = match err.downcast::<APIError>() {
+          Ok(err) => match *err {
+            APIError::ServerError(_path, message) => message,
+            err => format!("Couldn't drop a drink: {:?}", err),
+          },
+          Err(err) => format!("Couldn't drop a drink: {:?}", err),
+        };
         cb_sink
           .send(Box::new(move |siv| {
             siv.pop_layer();
