@@ -5,6 +5,7 @@ use cursive::align::{HAlign, VAlign};
 use cursive::theme::{BaseColor, Color, ColorStyle, ColorType, Effect, Style};
 use cursive::traits::*;
 use cursive::utils::span::SpannedString;
+use cursive::view::Position;
 use cursive::views::{Dialog, OnEventView, SelectView, TextView};
 use cursive::{Cursive, CursiveRunnable};
 use std::sync::{Arc, Mutex};
@@ -27,6 +28,8 @@ pub fn launch(api: API) -> Result<(), Box<dyn std::error::Error>> {
     machines: Store::new(None),
     api,
   }));
+
+  csh_logo(&mut siv);
 
   credit_count(Arc::clone(&model), &mut siv)?;
 
@@ -74,10 +77,16 @@ pub fn launch(api: API) -> Result<(), Box<dyn std::error::Error>> {
   Ok(())
 }
 
-fn credit_count(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn std::error::Error>> {
-  let credit_text = TextView::empty()
+fn csh_logo(siv: &mut CursiveRunnable) {
+  let logo = TextView::new(include_str!("./logo.txt"))
     .h_align(HAlign::Right)
     .v_align(VAlign::Bottom);
+
+  siv.screen_mut().add_transparent_layer(logo.full_screen());
+}
+
+fn credit_count(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn std::error::Error>> {
+  let credit_text = TextView::empty();
   let mut listener_view = ListenerView::new(
     credit_text,
     &model.lock().unwrap().credits,
@@ -94,7 +103,9 @@ fn credit_count(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn s
     .unwrap()
     .credits
     .use_store(siv, &mut listener_view);
-  siv.screen_mut().add_fullscreen_layer(listener_view);
+  siv
+    .screen_mut()
+    .add_transparent_layer_at(Position::parent((0, 0)), listener_view);
   Ok(())
 }
 
