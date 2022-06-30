@@ -98,7 +98,6 @@ struct DropRequest {
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug, Clone)]
 struct DropResponse {
-  #[serde(deserialize_with = "number_string_deserializer")]
   drinkBalance: u64,
   // message: String,
 }
@@ -230,11 +229,13 @@ impl API {
 
   fn login() {
     // Get credentials
-    let username: Option<String> = std::env::var("CLINK_USERNAME")
-      .map(Some)
-      .unwrap_or_else(|_| get_current_username().and_then(|it| it.into_string().ok()));
-
-    let username: String = username.unwrap();
+    let username: String = match std::env::var("CLINK_USERNAME") {
+      Ok(username) => username,
+      Err(_) => match get_current_username() {
+        Some(username) => username.into_string().unwrap(),
+        None => std::env::var("USER").expect("Couldn't determine username"),
+      },
+    };
 
     // Start kinit, ready to get password from pipe
     let mut process = Command::new("kinit")

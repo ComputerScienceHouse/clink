@@ -1,0 +1,7 @@
+[target.x86_64-unknown-linux-musl.dockerfile]
+file = "./Dockerfile"
+build-args = { CROSS_OS = "linux-x86_64", CROSS_TRIPLE = "x86_64-linux-musl" }
+
+[target.aarch64-unknown-linux-musl.dockerfile]
+file = "./Dockerfile"
+build-args = { CROSS_OS = "linux-aarch64", CROSS_TRIPLE = "aarch64-linux-musl" }
