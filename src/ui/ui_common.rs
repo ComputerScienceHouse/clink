@@ -22,6 +22,7 @@ type Model = Arc<Mutex<ModelData>>;
 
 /// Entrypoint, CLI will call this when we start up!
 pub fn launch(api: API) -> Result<(), Box<dyn std::error::Error>> {
+  api.get_token()?;
   let mut siv = cursive::default();
   let model = Arc::new(Mutex::new(ModelData {
     credits: Store::new(None),

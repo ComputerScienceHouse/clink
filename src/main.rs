@@ -1,11 +1,12 @@
 use clap::{command, Arg, ArgMatches, Command};
+use std::process::ExitCode;
 
 pub mod api;
 pub mod commands;
 
 mod ui;
 
-fn main() {
+fn main() -> ExitCode {
   let matches = command!("clink")
     .about("Drops drinks from CSH vending machines")
     .subcommand(
@@ -37,10 +38,15 @@ fn main() {
     .get_matches();
   let result = process_command(matches);
   match result {
-    Ok(_) => {}
-    // TODO: More specific errors can just be printed
-    Err(ref _err) => result.unwrap(),
-  }
+    Ok(_) => 0,
+    Err(err) => {
+      match err.downcast::<api::APIError>() {
+        Ok(err) => eprintln!("Error: {}", *err),
+        Err(err) => Err(err).unwrap(),
+      };
+      1
+    },
+  }.into()
 }
 
 fn process_command(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
