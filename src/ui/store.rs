@@ -3,6 +3,7 @@ use cursive::views::{BoxedView, NamedView};
 use cursive::{wrap_impl, Cursive};
 use std::cell::RefCell;
 
+use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use uuid::Uuid;
@@ -14,7 +15,7 @@ pub struct Store<T> {
 
 pub struct InnerListenerView<'a, T> {
   view: Rc<RefCell<BoxedView>>,
-  listener: Box<dyn Fn(&mut BoxedView, &T) + 'a>,
+  listener: Box<dyn Fn(&mut BoxedView, &T, &T) + 'a>,
 }
 
 pub struct ListenerView<'a, T> {
@@ -56,7 +57,7 @@ impl<'a, T: 'static> ListenerView<'a, T> {
   pub fn new<V: IntoBoxedView>(
     view: V,
     store: &Store<T>,
-    listener: impl Fn(&mut BoxedView, &T) + 'a,
+    listener: impl Fn(&mut BoxedView, &T, &T) + 'a,
   ) -> Self {
     let view = BoxedView::boxed(view);
     let name = format!("InnerListenerView-{}", store.get_name());
@@ -67,7 +68,7 @@ impl<'a, T: 'static> ListenerView<'a, T> {
 }
 
 impl<'a, T: 'static> InnerListenerView<'a, T> {
-  pub fn new(view: BoxedView, listener: impl Fn(&mut BoxedView, &T) + 'a) -> Self {
+  pub fn new(view: BoxedView, listener: impl Fn(&mut BoxedView, &T, &T) + 'a) -> Self {
     InnerListenerView {
       listener: Box::new(listener),
       view: Rc::new(RefCell::new(view)),
@@ -76,16 +77,15 @@ impl<'a, T: 'static> InnerListenerView<'a, T> {
 }
 
 trait InvokeView<T> {
-  fn invoke(&self, value: &T);
+  fn invoke(&self, old_value: &T, value: &T);
 }
 
 impl<'a, T> InvokeView<T> for InnerListenerView<'a, T> {
-  fn invoke(&self, value: &T) {
-    println!("Invoking!");
+  fn invoke(&self, old_value: &T, value: &T) {
     match self.view.try_borrow_mut() {
       Ok(mut v) => {
         let child = v.deref_mut();
-        (self.listener)(child, value);
+        (self.listener)(child, old_value, value);
       }
       Err(err) => {
         eprintln!("Couldn't borrow: {:?}", err);
@@ -109,17 +109,16 @@ impl<T: 'static> Store<T> {
     let named_view: &mut NamedView<InnerListenerView<'static, T>> = &mut view.view;
     let mut inner_listener = named_view.get_mut();
     let inner_listener: &mut InnerListenerView<'static, T> = inner_listener.deref_mut();
-    inner_listener.invoke(value);
+    inner_listener.invoke(value, value);
   }
   pub fn set(&mut self, siv: &mut Cursive, value: T) {
-    println!("Going to talk to all our listeners!");
-    self.value = value;
+    let old_value = mem::replace(&mut self.value, value);
+    let old_value = &old_value;
     let value = &self.value;
     siv.call_on_all_named(
       &format!("InnerListenerView-{}", &self.name),
       move |view: &mut InnerListenerView<T>| {
-        println!("Invoking a listener");
-        view.invoke(value);
+        view.invoke(old_value, value);
       },
     );
   }

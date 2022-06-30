@@ -6,7 +6,7 @@ use cursive::theme::{BaseColor, Color, ColorStyle, ColorType, Effect, Style};
 use cursive::traits::*;
 use cursive::utils::span::SpannedString;
 use cursive::view::Position;
-use cursive::views::{Dialog, OnEventView, SelectView, TextView};
+use cursive::views::{Dialog, DialogFocus, OnEventView, SelectView, TextView};
 use cursive::{Cursive, CursiveRunnable};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -90,7 +90,7 @@ fn credit_count(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn s
   let mut listener_view = ListenerView::new(
     credit_text,
     &model.lock().unwrap().credits,
-    |view, credits| {
+    |view, _old_credits, credits| {
       let credit_text = view.downcast_mut::<TextView>().unwrap();
       match credits {
         Some(credits) => credit_text.set_content(format!("Credits: {}", credits)),
@@ -119,10 +119,11 @@ fn machine_list(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn s
     });
   }
 
+  let cb_sink = siv.cb_sink().clone();
   let mut listener_view = ListenerView::new(
     select,
     &model.lock().unwrap().machines,
-    |view, machine_list| {
+    move |view, old_list, machine_list| {
       // panic rationale: failing this downcast indicates a bug in the program
       let select = view.downcast_mut::<SelectView<Machine>>().unwrap();
       select.clear();
@@ -130,6 +131,16 @@ fn machine_list(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn s
         for machine in &machine_list.machines {
           select.add_item(machine.display_name.clone(), machine.clone());
         }
+      }
+      // If we just loaded, take focus from the "Quit" button:
+      if old_list.is_none() && machine_list.is_some() {
+        cb_sink
+          .send(Box::new(move |siv| {
+            siv.call_on_all_named("machine_list_dialog", |dialog: &mut Dialog| {
+              dialog.set_focus(DialogFocus::Content);
+            });
+          }))
+          .unwrap();
       }
     },
   );
@@ -144,7 +155,8 @@ fn machine_list(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn s
   siv.add_layer(
     Dialog::around(listener_view.scrollable())
       .title("Select a Machine")
-      .button("Quit", |siv| siv.quit()),
+      .button("Quit", |siv| siv.quit())
+      .with_name("machine_list_dialog"),
   );
   Ok(())
 }
@@ -164,7 +176,7 @@ fn item_list(
   let mut listener_view = ListenerView::new(
     select,
     &model.lock().unwrap().machines,
-    move |view, machine_list| {
+    move |view, _old_list, machine_list| {
       let select = view.downcast_mut::<SelectView<Slot>>().unwrap();
       let machine = machine_list
         .as_ref()
