@@ -143,7 +143,20 @@ fn machine_list(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn s
       select.clear();
       if let Some(machine_list) = machine_list {
         for machine in &machine_list.machines {
-          select.add_item(machine.display_name.clone(), machine.clone());
+          select.add_item(
+            SpannedString::styled(
+              machine.display_name.clone(),
+              match machine.is_online {
+                true => Style::default(),
+                false => Style::from(ColorStyle::front(ColorType::Color(Color::Light(
+                  BaseColor::Red,
+                ))))
+                .combine(Effect::Dim)
+                .combine(Effect::Bold),
+              },
+            ),
+            machine.clone(),
+          );
         }
       }
       // If we just loaded, take focus from the "Quit" button:

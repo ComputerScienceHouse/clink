@@ -45,8 +45,9 @@ fn main() -> ExitCode {
         Err(err) => Err(err).unwrap(),
       };
       1
-    },
-  }.into()
+    }
+  }
+  .into()
 }
 
 fn process_command(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
