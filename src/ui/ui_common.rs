@@ -2,11 +2,13 @@ use crate::api::{APIError, DrinkList, Machine, Slot, API};
 use crate::ui::store::{ListenerView, Store};
 use cursive;
 use cursive::align::{HAlign, VAlign};
+use cursive::event::{Event, EventResult, Key};
 use cursive::theme::{BaseColor, Color, ColorStyle, ColorType, Effect, PaletteColor, Style};
 use cursive::traits::*;
 use cursive::utils::span::SpannedString;
 use cursive::view::Position;
-use cursive::views::{Dialog, DialogFocus, OnEventView, SelectView, TextView};
+
+use cursive::views::{Dialog, DialogFocus, Layer, OnEventView, SelectView, TextView};
 use cursive::{Cursive, CursiveRunnable};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -105,7 +107,7 @@ fn csh_logo(siv: &mut CursiveRunnable) {
 
 /// Draws credit counter in top-left
 fn credit_count(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn std::error::Error>> {
-  let credit_text = TextView::empty();
+  let credit_text = TextView::empty().h_align(HAlign::Center);
   let mut listener_view = ListenerView::new(
     credit_text,
     &model.lock().unwrap().credits,
@@ -122,9 +124,10 @@ fn credit_count(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn s
     .unwrap()
     .credits
     .use_store(siv, &mut listener_view);
-  siv
-    .screen_mut()
-    .add_transparent_layer_at(Position::parent((0, 0)), listener_view);
+  siv.screen_mut().add_transparent_layer_at(
+    Position::parent((0, 0)),
+    Layer::with_color(listener_view.full_width(), ColorStyle::background()).full_width(),
+  );
   Ok(())
 }
 
@@ -183,7 +186,15 @@ fn machine_list(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn s
     .machines
     .use_store(siv, &mut listener_view);
 
-  let listener_view = OnEventView::new(listener_view);
+  let listener_view = OnEventView::new(listener_view)
+    .on_event_inner(Key::Right, |listener_view, _event| {
+      listener_view.with_child::<SelectView<Machine>, _, Option<EventResult>>(|v| {
+        Some(v.on_event(Event::Key(Key::Enter)))
+      })
+    })
+    .on_event(Key::Left, |siv| {
+      siv.quit();
+    });
 
   siv.add_layer(
     Dialog::around(listener_view.scrollable())
@@ -207,11 +218,21 @@ fn item_list(
       drop_drink(Arc::clone(&model), siv, slot)
     });
   }
+  let select = OnEventView::new(select)
+    .on_event_inner(Key::Right, move |select, _event| {
+      Some(select.on_event(Event::Key(Key::Enter)))
+    })
+    .on_event(Key::Left, |siv| {
+      siv.pop_layer();
+    });
   let mut listener_view = ListenerView::new(
     select,
     &model.lock().unwrap().machines,
     move |view, _old_list, machine_list| {
-      let select = view.downcast_mut::<SelectView<Slot>>().unwrap();
+      let event_view = view
+        .downcast_mut::<OnEventView<SelectView<Slot>>>()
+        .unwrap();
+      let select = event_view.get_inner_mut();
       let machine = machine_list
         .as_ref()
         .unwrap()
@@ -244,8 +265,6 @@ fn item_list(
     .unwrap()
     .machines
     .use_store(siv, &mut listener_view);
-
-  let listener_view = OnEventView::new(listener_view);
 
   let machine_name = {
     let machines = &model.lock().unwrap().machines;
@@ -288,8 +307,9 @@ fn drop_drink(model: Model, siv: &mut Cursive, slot: &Slot) {
   siv.add_layer(dialog);
   let cb_sink = siv.cb_sink().clone();
   let slot_number = slot.number;
-  thread::spawn(
-    move || match model.lock().unwrap().api.drop(machine_id, slot_number) {
+  thread::spawn(move || {
+    let api = model.lock().unwrap().api.clone();
+    match api.drop(machine_id, slot_number) {
       Ok(credits) => {
         let model = Arc::clone(&model);
         let message = format!("Enjoy! You now have {} credits", credits);
@@ -328,6 +348,6 @@ fn drop_drink(model: Model, siv: &mut Cursive, slot: &Slot) {
           }))
           .unwrap();
       }
-    },
-  );
+    };
+  });
 }

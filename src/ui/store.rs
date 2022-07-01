@@ -1,5 +1,6 @@
 use cursive::view::{IntoBoxedView, ViewWrapper};
 use cursive::views::{BoxedView, NamedView};
+use cursive::View;
 use cursive::{wrap_impl, Cursive};
 use std::cell::RefCell;
 
@@ -67,11 +68,40 @@ impl<'a, T: 'static> ListenerView<'a, T> {
   }
 }
 
+impl<T: 'static> ListenerView<'static, T> {
+  pub fn with_child<V: View, F, R>(&mut self, cb: F) -> R
+  where
+    F: FnOnce(&mut V) -> R,
+  {
+    self.view.with_view_mut(|v| v.with_child(cb)).unwrap()
+  }
+}
+
 impl<'a, T: 'static> InnerListenerView<'a, T> {
   pub fn new(view: BoxedView, listener: impl Fn(&mut BoxedView, &T, &T) + 'a) -> Self {
     InnerListenerView {
       listener: Box::new(listener),
       view: Rc::new(RefCell::new(view)),
+    }
+  }
+}
+
+impl<T: 'static> InnerListenerView<'static, T> {
+  pub fn with_child<V: View, F, R>(&self, cb: F) -> R
+  where
+    F: FnOnce(&mut V) -> R,
+  {
+    let mut v = self.view.try_borrow_mut().unwrap();
+    let child: &mut BoxedView = v.deref_mut();
+    let child = child.deref_mut();
+    if let Some(v) = child.downcast_mut::<V>() {
+      cb(v)
+    } else {
+      panic!(
+        "Expected {:?}, found {} instead!",
+        std::any::type_name::<V>(),
+        child.type_name()
+      )
     }
   }
 }
