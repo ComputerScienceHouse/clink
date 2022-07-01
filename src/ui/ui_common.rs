@@ -2,7 +2,7 @@ use crate::api::{APIError, DrinkList, Machine, Slot, API};
 use crate::ui::store::{ListenerView, Store};
 use cursive;
 use cursive::align::{HAlign, VAlign};
-use cursive::theme::{BaseColor, Color, ColorStyle, ColorType, Effect, Style};
+use cursive::theme::{BaseColor, Color, ColorStyle, ColorType, Effect, PaletteColor, Style};
 use cursive::traits::*;
 use cursive::utils::span::SpannedString;
 use cursive::view::Position;
@@ -90,9 +90,15 @@ pub fn launch(api: API) -> Result<(), Box<dyn std::error::Error>> {
 
 /// Draws CSH logo in the corner
 fn csh_logo(siv: &mut CursiveRunnable) {
-  let logo = TextView::new(include_str!("./logo.txt"))
-    .h_align(HAlign::Right)
-    .v_align(VAlign::Bottom);
+  let logo = TextView::new(SpannedString::styled(
+    include_str!("./logo.txt"),
+    Style::from(Effect::Dim).combine(ColorStyle::new(
+      PaletteColor::HighlightText,
+      PaletteColor::Background,
+    )),
+  ))
+  .h_align(HAlign::Right)
+  .v_align(VAlign::Bottom);
 
   siv.screen_mut().add_transparent_layer(logo.full_screen());
 }
