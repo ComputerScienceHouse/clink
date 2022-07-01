@@ -1,7 +1,7 @@
 use http::status::StatusCode;
 use http::Uri;
 use isahc::{auth::Authentication, prelude::*, HttpClient, Request};
-use rpassword::read_password;
+use rpassword::prompt_password;
 use serde::{de, Deserialize, Serialize};
 use serde_json;
 use std::fmt;
@@ -260,8 +260,7 @@ impl API {
       .unwrap();
 
     // Get password
-    println!("Please enter password for {}: ", username);
-    let password = read_password().unwrap();
+    let password = prompt_password(format!("Password for {}: ", username)).unwrap();
 
     // Pipe password into the prompt that "comes up"
     process
@@ -273,8 +272,6 @@ impl API {
 
     // Wait for login to be complete before continuting
     process.wait().unwrap();
-
-    println!("...\n\n");
   }
 
   pub fn get_credits(&self) -> Result<u64, Box<dyn std::error::Error>> {
