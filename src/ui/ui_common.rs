@@ -6,9 +6,11 @@ use cursive::event::{Event, EventResult, Key};
 use cursive::theme::{BaseColor, Color, ColorStyle, ColorType, Effect, PaletteColor, Style};
 use cursive::traits::*;
 use cursive::utils::span::SpannedString;
-use cursive::view::Position;
+use cursive::view::{Margins, Offset, Position};
 
-use cursive::views::{Dialog, DialogFocus, Layer, OnEventView, SelectView, TextView};
+use cursive::views::{
+  Dialog, DialogFocus, Layer, OnEventView, PaddedView, SelectView, ShadowView, TextView,
+};
 use cursive::{Cursive, CursiveRunnable};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -37,9 +39,9 @@ pub fn launch(api: API) -> Result<(), Box<dyn std::error::Error>> {
 
   csh_logo(&mut siv);
 
-  credit_count(Arc::clone(&model), &mut siv)?;
+  let padding = credit_count(Arc::clone(&model), &mut siv);
 
-  machine_list(Arc::clone(&model), &mut siv)?;
+  machine_list(Arc::clone(&model), &mut siv, padding)?;
 
   let status_handle = {
     let model = Arc::clone(&model);
@@ -106,15 +108,15 @@ fn csh_logo(siv: &mut CursiveRunnable) {
 }
 
 /// Draws credit counter in top-left
-fn credit_count(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn std::error::Error>> {
-  let credit_text = TextView::empty().h_align(HAlign::Center);
+fn credit_count(model: Model, siv: &mut CursiveRunnable) -> Margins {
+  let credit_text = TextView::empty();
   let mut listener_view = ListenerView::new(
     credit_text,
     &model.lock().unwrap().credits,
     |view, _old_credits, credits| {
       let credit_text = view.downcast_mut::<TextView>().unwrap();
       match credits {
-        Some(credits) => credit_text.set_content(format!("Credits: {}", credits)),
+        Some(credits) => credit_text.set_content(format!(" Credits: {} ", credits)),
         None => credit_text.set_content("Loading..."),
       };
     },
@@ -124,21 +126,30 @@ fn credit_count(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn s
     .unwrap()
     .credits
     .use_store(siv, &mut listener_view);
+  let mut dialog = Dialog::around(listener_view).padding_lrtb(0, 0, 0, 0);
+  let mut size = dialog.required_size(siv.screen_size());
+  let offset_y = 2;
   siv.screen_mut().add_transparent_layer_at(
-    Position::parent((0, 0)),
-    Layer::with_color(listener_view.full_width(), ColorStyle::background()).full_width(),
+    Position::new(Offset::Center, Offset::Parent(offset_y)),
+    dialog,
   );
-  Ok(())
+
+  size = size.map_y(move |y| y + (offset_y as usize) + 1);
+  Margins::tb(size.y, size.y)
 }
 
 /// Draws SelectView with list of available machines
-fn machine_list(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn std::error::Error>> {
+fn machine_list(
+  model: Model,
+  siv: &mut CursiveRunnable,
+  padding: Margins,
+) -> Result<(), Box<dyn std::error::Error>> {
   let mut select: SelectView<Machine> = SelectView::new().h_align(HAlign::Center).autojump();
 
   {
     let model = Arc::clone(&model);
     select.set_on_submit(move |siv: &mut Cursive, machine: &Machine| {
-      item_list(Arc::clone(&model), siv, machine.id).unwrap();
+      item_list(Arc::clone(&model), siv, machine.id, padding).unwrap();
     });
   }
 
@@ -196,12 +207,15 @@ fn machine_list(model: Model, siv: &mut CursiveRunnable) -> Result<(), Box<dyn s
       siv.quit();
     });
 
-  siv.add_layer(
-    Dialog::around(listener_view.scrollable())
-      .title("Select a Machine")
-      .button("Quit", |siv| siv.quit())
-      .with_name("machine_list_dialog"),
-  );
+  siv.screen_mut().add_transparent_layer(PaddedView::new(
+    padding,
+    ShadowView::new(Layer::new(
+      Dialog::around(listener_view.scrollable())
+        .title("Select a Machine")
+        .button("Quit", |siv| siv.quit())
+        .with_name("machine_list_dialog"),
+    )),
+  ));
   Ok(())
 }
 
@@ -210,6 +224,7 @@ fn item_list(
   model: Model,
   siv: &mut Cursive,
   machine_id: u64,
+  padding: Margins,
 ) -> Result<(), Box<dyn std::error::Error>> {
   let mut select: SelectView<Slot> = SelectView::new().h_align(HAlign::Center).autojump();
   {
@@ -276,13 +291,16 @@ fn item_list(
       .unwrap();
     machine.display_name.clone()
   };
-  siv.add_layer(
-    Dialog::around(listener_view.scrollable())
-      .title(machine_name)
-      .button("Cancel", |siv| {
-        siv.pop_layer();
-      }),
-  );
+  siv.screen_mut().add_transparent_layer(PaddedView::new(
+    padding,
+    ShadowView::new(Layer::new(
+      Dialog::around(listener_view.scrollable())
+        .title(machine_name)
+        .button("Cancel", |siv| {
+          siv.pop_layer();
+        }),
+    )),
+  ));
   Ok(())
 }
 
@@ -311,8 +329,9 @@ fn drop_drink(model: Model, siv: &mut Cursive, slot: &Slot) {
     let api = model.lock().unwrap().api.clone();
     match api.drop(machine_id, slot_number) {
       Ok(credits) => {
-        let model = Arc::clone(&model);
         let message = format!("Enjoy! You now have {} credits", credits);
+        let model = Arc::clone(&model);
+        let model_ref = Arc::clone(&model);
         cb_sink
           .send(Box::new(move |siv| {
             model.lock().unwrap().credits.set(siv, Some(credits));
@@ -324,6 +343,12 @@ fn drop_drink(model: Model, siv: &mut Cursive, slot: &Slot) {
                 })
                 .title("Dropped Drink"),
             );
+          }))
+          .unwrap();
+        let status = api.get_status_for_machine(None).unwrap();
+        cb_sink
+          .send(Box::new(move |siv| {
+            model_ref.lock().unwrap().machines.set(siv, Some(status));
           }))
           .unwrap();
       }
