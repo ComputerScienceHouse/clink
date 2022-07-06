@@ -79,16 +79,19 @@ jobs:
         run: |
           echo "release_pre=false" >> $GITHUB_ENV
       - name: Show packaging name
-        run : |
+        run: |
           echo "${{ env.release_tag }}"
           echo "${{ env.release_name }}"
           echo "${{ env.release_pre }}"
+      - name: Rename artifacts
+        run: |
+          mv target/${{ matrix.target }}/release/clink clink-release-${{ matrix.target }}
 
       - name: Create Release
         if: ${{ env.release_tag != '' }}
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "target/${{ matrix.target }}/release/clink"
+          artifacts: "clink-release-${{ matrix.target }}"
           tag: ${{ env.release_tag }}
           omitBodyDuringUpdate: true
           omitNameDuringUpdate: true
