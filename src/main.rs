@@ -40,17 +40,14 @@ fn main() -> ExitCode {
   match result {
     Ok(_) => 0,
     Err(err) => {
-      match err.downcast::<api::APIError>() {
-        Ok(err) => eprintln!("Error: {}", *err),
-        Err(err) => Err(err).unwrap(),
-      };
+      eprintln!("Error: {}", err);
       1
     }
   }
   .into()
 }
 
-fn process_command(matches: ArgMatches) -> Result<(), Box<dyn std::error::Error>> {
+fn process_command(matches: ArgMatches) -> Result<(), api::APIError> {
   let mut api = api::API::new();
   if let Some(matches) = matches.subcommand_matches("list") {
     commands::list::list(matches, &mut api)

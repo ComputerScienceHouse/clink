@@ -1,8 +1,8 @@
 use clap::ArgMatches;
 
-use crate::api::API;
+use crate::api::{APIError, API};
 
-pub fn list(matches: &ArgMatches, api: &mut API) -> Result<(), Box<dyn std::error::Error>> {
+pub fn list(matches: &ArgMatches, api: &mut API) -> Result<(), APIError> {
   let drinks = api.get_status_for_machine(matches.value_of("machine"))?;
 
   for machine in drinks.machines {

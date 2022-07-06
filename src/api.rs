@@ -21,6 +21,8 @@ pub struct API {
 pub enum APIError {
   Unauthorized,
   BadFormat,
+  HTTPError(http::Error),
+  IsahcError(isahc::Error),
   ServerError(Option<Uri>, String),
 }
 
@@ -75,18 +77,18 @@ struct CreditResponse {
 #[derive(Deserialize, Debug, Clone)]
 struct CreditUser {
   #[serde(deserialize_with = "number_string_deserializer")]
-  drinkBalance: u64,
+  drinkBalance: i64,
 }
 
-fn number_string_deserializer<'de, D>(deserializer: D) -> Result<u64, D::Error>
+fn number_string_deserializer<'de, D>(deserializer: D) -> Result<i64, D::Error>
 where
   D: de::Deserializer<'de>,
 {
   let number: String = Deserialize::deserialize(deserializer)?;
-  match number.parse::<u64>() {
+  match number.parse::<i64>() {
     Ok(res) => Ok(res),
     Err(e) => Err(de::Error::custom(format!(
-      "Failed to deserialize u64: {}",
+      "Failed to deserialize i64: {}",
       e
     ))),
   }
@@ -101,7 +103,7 @@ struct DropRequest {
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug, Clone)]
 struct DropResponse {
-  drinkBalance: u64,
+  drinkBalance: i64,
   // message: String,
 }
 
@@ -124,6 +126,8 @@ impl fmt::Display for APIError {
         },
         message
       ),
+      APIError::HTTPError(err) => write!(f, "HTTPError: {}", err),
+      APIError::IsahcError(err) => write!(f, "IsahcError: {}", err),
     }
   }
 }
@@ -168,12 +172,12 @@ impl API {
     &self,
     builder: http::request::Builder,
     input: APIBody<I>,
-  ) -> Result<O, Box<dyn std::error::Error>>
+  ) -> Result<O, APIError>
   where
     I: Serialize,
     O: de::DeserializeOwned,
   {
-    let client = HttpClient::new()?;
+    let client = HttpClient::new().map_err(APIError::IsahcError)?;
     let token = self.get_token()?;
     let builder = builder
       .header("Authorization", token)
@@ -182,24 +186,26 @@ impl API {
       APIBody::Json(_) => builder.header("Content-Type", "application/json"),
       APIBody::NoBody => builder,
     };
-    let mut response = client.send(builder.body(input)?)?;
+    let mut response = client
+      .send(builder.body(input).map_err(APIError::HTTPError)?)
+      .map_err(APIError::IsahcError)?;
     match response.status() {
       StatusCode::OK => match response.json::<O>() {
         Ok(value) => Ok(value),
-        Err(_) => Err(Box::new(APIError::BadFormat)),
+        Err(_) => Err(APIError::BadFormat),
       },
       _ => {
-        let text = response.text()?;
-        Err(Box::new(APIError::ServerError(
+        let text = response.text().map_err(|_| APIError::BadFormat)?;
+        Err(APIError::ServerError(
           response.effective_uri().cloned(),
           serde_json::from_str::<ErrorResponse>(&text)
             .map(|body| body.error)
             .unwrap_or(text),
-        )))
+        ))
       }
     }
   }
-  pub fn drop(&self, machine: String, slot: u8) -> Result<u64, Box<dyn std::error::Error>> {
+  pub fn drop(&self, machine: String, slot: u8) -> Result<i64, APIError> {
     self
       .authenticated_request::<DropResponse, _>(
         Request::post("https://drink.csh.rit.edu/drinks/drop"),
@@ -208,13 +214,13 @@ impl API {
       .map(|drop| drop.drinkBalance)
   }
 
-  fn take_token(&self, token: &mut Option<String>) -> Result<String, Box<dyn std::error::Error>> {
+  fn take_token(&self, token: &mut Option<String>) -> Result<String, APIError> {
     match token {
       Some(token) => Ok(token.to_string()),
       None => {
         let response = Request::get("https://sso.csh.rit.edu/auth/realms/csh/protocol/openid-connect/auth?client_id=clidrink&redirect_uri=drink%3A%2F%2Fcallback&response_type=token%20id_token&scope=openid%20profile%20drink_balance&state=&nonce=")
           .authentication(Authentication::negotiate())
-          .body(())?.send()?;
+          .body(()).map_err(APIError::HTTPError)?.send().map_err(APIError::IsahcError)?;
         let location = match response.headers().get("Location") {
           Some(location) => location,
           None => {
@@ -222,7 +228,13 @@ impl API {
             return self.take_token(token);
           }
         };
-        let url = Url::parse(&location.to_str()?.replace('#', "?"))?;
+        let url = Url::parse(
+          &location
+            .to_str()
+            .map_err(|_| APIError::BadFormat)?
+            .replace('#', "?"),
+        )
+        .map_err(|_| APIError::BadFormat)?;
 
         for (key, value) in url.query_pairs() {
           if key == "access_token" {
@@ -231,12 +243,12 @@ impl API {
             return Ok(value);
           }
         }
-        Err(Box::new(APIError::BadFormat))
+        Err(APIError::BadFormat)
       }
     }
   }
 
-  pub fn get_token(&self) -> Result<String, Box<dyn std::error::Error>> {
+  pub fn get_token(&self) -> Result<String, APIError> {
     let mut token = self.token.lock().unwrap();
     self.take_token(token.deref_mut())
   }
@@ -274,7 +286,7 @@ impl API {
     process.wait().unwrap();
   }
 
-  pub fn get_credits(&self) -> Result<u64, Box<dyn std::error::Error>> {
+  pub fn get_credits(&self) -> Result<i64, APIError> {
     // Can also be used to get other user information
     let user: User = self.authenticated_request(
       Request::get("https://sso.csh.rit.edu/auth/realms/csh/protocol/openid-connect/userinfo"),
@@ -290,14 +302,11 @@ impl API {
     Ok(credit_response.user.drinkBalance)
   }
 
-  pub fn get_machine_status(&self) -> Result<DrinkList, Box<dyn std::error::Error>> {
+  pub fn get_machine_status(&self) -> Result<DrinkList, APIError> {
     self.get_status_for_machine(None)
   }
 
-  pub fn get_status_for_machine(
-    &self,
-    machine: Option<&str>,
-  ) -> Result<DrinkList, Box<dyn std::error::Error>> {
+  pub fn get_status_for_machine(&self, machine: Option<&str>) -> Result<DrinkList, APIError> {
     self.authenticated_request(
       Request::get(format!(
         "https://drink.csh.rit.edu/drinks{}",

@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 struct ModelData {
-  credits: Store<Option<u64>>,
+  credits: Store<Option<i64>>,
   machines: Store<Option<DrinkList>>,
   api: API,
 }
@@ -25,7 +25,7 @@ struct ModelData {
 type Model = Arc<Mutex<ModelData>>;
 
 /// Entrypoint, CLI will call this when we start up!
-pub fn launch(api: API) -> Result<(), Box<dyn std::error::Error>> {
+pub fn launch(api: API) -> Result<(), APIError> {
   api.get_token()?;
   let mut siv = cursive::default();
   let model = Arc::new(Mutex::new(ModelData {
@@ -41,7 +41,7 @@ pub fn launch(api: API) -> Result<(), Box<dyn std::error::Error>> {
 
   let padding = credit_count(Arc::clone(&model), &mut siv);
 
-  machine_list(Arc::clone(&model), &mut siv, padding)?;
+  machine_list(Arc::clone(&model), &mut siv, padding);
 
   let status_handle = {
     let model = Arc::clone(&model);
@@ -56,10 +56,9 @@ pub fn launch(api: API) -> Result<(), Box<dyn std::error::Error>> {
               model.lock().unwrap().machines.set(siv, Some(machine_list));
             }))
             .unwrap();
+          Ok(())
         }
-        Err(err) => {
-          panic!("Couldn't get drink list: {:?}", err);
-        }
+        Err(err) => Err(err),
       }
     })
   };
@@ -77,18 +76,17 @@ pub fn launch(api: API) -> Result<(), Box<dyn std::error::Error>> {
               model.lock().unwrap().credits.set(siv, Some(credit_count));
             }))
             .unwrap();
+          Ok(())
         }
-        Err(err) => {
-          panic!("Couldn't get credits: {:?}", err);
-        }
+        Err(err) => Err(err),
       }
     })
   };
 
   siv.run();
 
-  status_handle.join().unwrap();
-  credits_handle.join().unwrap();
+  status_handle.join().unwrap()?;
+  credits_handle.join().unwrap()?;
   Ok(())
 }
 
@@ -139,17 +137,13 @@ fn credit_count(model: Model, siv: &mut CursiveRunnable) -> Margins {
 }
 
 /// Draws SelectView with list of available machines
-fn machine_list(
-  model: Model,
-  siv: &mut CursiveRunnable,
-  padding: Margins,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn machine_list(model: Model, siv: &mut CursiveRunnable, padding: Margins) {
   let mut select: SelectView<Machine> = SelectView::new().h_align(HAlign::Center).autojump();
 
   {
     let model = Arc::clone(&model);
     select.set_on_submit(move |siv: &mut Cursive, machine: &Machine| {
-      item_list(Arc::clone(&model), siv, machine.id, padding).unwrap();
+      item_list(Arc::clone(&model), siv, machine.id, padding);
     });
   }
 
@@ -216,16 +210,10 @@ fn machine_list(
         .with_name("machine_list_dialog"),
     )),
   ));
-  Ok(())
 }
 
 /// Draws list of items available for purchase
-fn item_list(
-  model: Model,
-  siv: &mut Cursive,
-  machine_id: u64,
-  padding: Margins,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn item_list(model: Model, siv: &mut Cursive, machine_id: u64, padding: Margins) {
   let mut select: SelectView<Slot> = SelectView::new().h_align(HAlign::Center).autojump();
   {
     let model = Arc::clone(&model);
@@ -301,7 +289,6 @@ fn item_list(
         }),
     )),
   ));
-  Ok(())
 }
 
 /// Fires off a drop and shows a message to the user
@@ -353,12 +340,9 @@ fn drop_drink(model: Model, siv: &mut Cursive, slot: &Slot) {
           .unwrap();
       }
       Err(err) => {
-        let message = match err.downcast::<APIError>() {
-          Ok(err) => match *err {
-            APIError::ServerError(_path, message) => message,
-            err => format!("Couldn't drop a drink: {:?}", err),
-          },
-          Err(err) => format!("Couldn't drop a drink: {:?}", err),
+        let message = match err {
+          APIError::ServerError(_path, message) => message,
+          err => format!("Couldn't drop a drink: {:?}", err),
         };
         cb_sink
           .send(Box::new(move |siv| {
