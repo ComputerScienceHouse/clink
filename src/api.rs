@@ -1,23 +1,28 @@
 use http::status::StatusCode;
 use http::Uri;
 use isahc::{auth::Authentication, prelude::*, HttpClient, Request};
-use rpassword::read_password;
+use rpassword::prompt_password;
 use serde::{de, Deserialize, Serialize};
 use serde_json;
 use std::fmt;
 use std::io::Write;
+use std::ops::DerefMut;
 use std::process::{Command, Stdio};
+use std::sync::Arc;
+use std::sync::Mutex;
 use url::Url;
 use users::get_current_username;
 
 pub struct API {
-  token: Option<String>,
+  token: Arc<Mutex<Option<String>>>,
 }
 
 #[derive(Debug)]
 pub enum APIError {
   Unauthorized,
   BadFormat,
+  HTTPError(http::Error),
+  IsahcError(isahc::Error),
   ServerError(Option<Uri>, String),
 }
 
@@ -48,7 +53,7 @@ pub struct Slot {
   pub empty: bool,
   pub item: Item,
   pub machine: u64,
-  pub number: u64,
+  pub number: u8,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -72,18 +77,18 @@ struct CreditResponse {
 #[derive(Deserialize, Debug, Clone)]
 struct CreditUser {
   #[serde(deserialize_with = "number_string_deserializer")]
-  drinkBalance: u64,
+  drinkBalance: i64,
 }
 
-fn number_string_deserializer<'de, D>(deserializer: D) -> Result<u64, D::Error>
+fn number_string_deserializer<'de, D>(deserializer: D) -> Result<i64, D::Error>
 where
   D: de::Deserializer<'de>,
 {
   let number: String = Deserialize::deserialize(deserializer)?;
-  match number.parse::<u64>() {
+  match number.parse::<i64>() {
     Ok(res) => Ok(res),
     Err(e) => Err(de::Error::custom(format!(
-      "Failed to deserialize u64: {}",
+      "Failed to deserialize i64: {}",
       e
     ))),
   }
@@ -98,8 +103,7 @@ struct DropRequest {
 #[allow(non_snake_case)]
 #[derive(Deserialize, Debug, Clone)]
 struct DropResponse {
-  #[serde(deserialize_with = "number_string_deserializer")]
-  drinkBalance: u64,
+  drinkBalance: i64,
   // message: String,
 }
 
@@ -122,6 +126,8 @@ impl fmt::Display for APIError {
         },
         message
       ),
+      APIError::HTTPError(err) => write!(f, "HTTPError: {}", err),
+      APIError::IsahcError(err) => write!(f, "IsahcError: {}", err),
     }
   }
 }
@@ -146,22 +152,32 @@ impl<T: Serialize> From<APIBody<T>> for isahc::Body {
   }
 }
 
+impl Clone for API {
+  fn clone(&self) -> Self {
+    Self {
+      token: Arc::clone(&self.token),
+    }
+  }
+}
+
 impl API {
   pub fn new() -> API {
-    let mut api = API { token: None };
-    api.get_token().ok();
-    api
+    // We should find a way to spin this off in a thread
+    // api.get_token().ok();
+    API {
+      token: Arc::new(Mutex::new(None)),
+    }
   }
   fn authenticated_request<O, I>(
-    self: &mut API,
+    &self,
     builder: http::request::Builder,
     input: APIBody<I>,
-  ) -> Result<O, Box<dyn std::error::Error>>
+  ) -> Result<O, APIError>
   where
     I: Serialize,
     O: de::DeserializeOwned,
   {
-    let client = HttpClient::new()?;
+    let client = HttpClient::new().map_err(APIError::IsahcError)?;
     let token = self.get_token()?;
     let builder = builder
       .header("Authorization", token)
@@ -170,24 +186,26 @@ impl API {
       APIBody::Json(_) => builder.header("Content-Type", "application/json"),
       APIBody::NoBody => builder,
     };
-    let mut response = client.send(builder.body(input)?)?;
+    let mut response = client
+      .send(builder.body(input).map_err(APIError::HTTPError)?)
+      .map_err(APIError::IsahcError)?;
     match response.status() {
       StatusCode::OK => match response.json::<O>() {
         Ok(value) => Ok(value),
-        Err(_) => Err(Box::new(APIError::BadFormat)),
+        Err(_) => Err(APIError::BadFormat),
       },
       _ => {
-        let text = response.text()?;
-        Err(Box::new(APIError::ServerError(
+        let text = response.text().map_err(|_| APIError::BadFormat)?;
+        Err(APIError::ServerError(
           response.effective_uri().cloned(),
           serde_json::from_str::<ErrorResponse>(&text)
             .map(|body| body.error)
             .unwrap_or(text),
-        )))
+        ))
       }
     }
   }
-  pub fn drop(self: &mut API, machine: String, slot: u8) -> Result<u64, Box<dyn std::error::Error>> {
+  pub fn drop(&self, machine: String, slot: u8) -> Result<i64, APIError> {
     self
       .authenticated_request::<DropResponse, _>(
         Request::post("https://drink.csh.rit.edu/drinks/drop"),
@@ -196,41 +214,54 @@ impl API {
       .map(|drop| drop.drinkBalance)
   }
 
-  pub fn get_token(self: &mut API) -> Result<String, Box<dyn std::error::Error>> {
-    return match &self.token {
+  fn take_token(&self, token: &mut Option<String>) -> Result<String, APIError> {
+    match token {
       Some(token) => Ok(token.to_string()),
       None => {
         let response = Request::get("https://sso.csh.rit.edu/auth/realms/csh/protocol/openid-connect/auth?client_id=clidrink&redirect_uri=drink%3A%2F%2Fcallback&response_type=token%20id_token&scope=openid%20profile%20drink_balance&state=&nonce=")
           .authentication(Authentication::negotiate())
-          .body(())?.send()?;
+          .body(()).map_err(APIError::HTTPError)?.send().map_err(APIError::IsahcError)?;
         let location = match response.headers().get("Location") {
           Some(location) => location,
           None => {
             API::login();
-            return self.get_token();
+            return self.take_token(token);
           }
         };
-        let url = Url::parse(&location.to_str()?.replace('#', "?"))?;
+        let url = Url::parse(
+          &location
+            .to_str()
+            .map_err(|_| APIError::BadFormat)?
+            .replace('#', "?"),
+        )
+        .map_err(|_| APIError::BadFormat)?;
 
         for (key, value) in url.query_pairs() {
           if key == "access_token" {
             let value = format!("Bearer {}", value);
-            self.token = Some(value.clone());
+            *token = Some(value.clone());
             return Ok(value);
           }
         }
-        return Err(Box::new(APIError::BadFormat));
+        Err(APIError::BadFormat)
       }
-    };
+    }
+  }
+
+  pub fn get_token(&self) -> Result<String, APIError> {
+    let mut token = self.token.lock().unwrap();
+    self.take_token(token.deref_mut())
   }
 
   fn login() {
     // Get credentials
-    let username: Option<String> = std::env::var("CLINK_USERNAME")
-      .map(Some)
-      .unwrap_or_else(|_| get_current_username().and_then(|it| it.into_string().ok()));
-
-    let username: String = username.unwrap();
+    let username: String = match std::env::var("CLINK_USERNAME") {
+      Ok(username) => username,
+      Err(_) => match get_current_username() {
+        Some(username) => username.into_string().unwrap(),
+        None => std::env::var("USER").expect("Couldn't determine username"),
+      },
+    };
 
     // Start kinit, ready to get password from pipe
     let mut process = Command::new("kinit")
@@ -241,8 +272,7 @@ impl API {
       .unwrap();
 
     // Get password
-    println!("Please enter password for {}: ", username);
-    let password = read_password().unwrap();
+    let password = prompt_password(format!("Password for {}: ", username)).unwrap();
 
     // Pipe password into the prompt that "comes up"
     process
@@ -254,11 +284,9 @@ impl API {
 
     // Wait for login to be complete before continuting
     process.wait().unwrap();
-
-    println!("...\n\n");
   }
 
-  pub fn get_credits(self: &mut API) -> Result<u64, Box<dyn std::error::Error>> {
+  pub fn get_credits(&self) -> Result<i64, APIError> {
     // Can also be used to get other user information
     let user: User = self.authenticated_request(
       Request::get("https://sso.csh.rit.edu/auth/realms/csh/protocol/openid-connect/userinfo"),
@@ -274,14 +302,11 @@ impl API {
     Ok(credit_response.user.drinkBalance)
   }
 
-  pub fn get_machine_status(self: &mut API) -> Result<DrinkList, Box<dyn std::error::Error>> {
+  pub fn get_machine_status(&self) -> Result<DrinkList, APIError> {
     self.get_status_for_machine(None)
   }
 
-  pub fn get_status_for_machine(
-    self: &mut API,
-    machine: Option<&str>,
-  ) -> Result<DrinkList, Box<dyn std::error::Error>> {
+  pub fn get_status_for_machine(&self, machine: Option<&str>) -> Result<DrinkList, APIError> {
     self.authenticated_request(
       Request::get(format!(
         "https://drink.csh.rit.edu/drinks{}",

@@ -1,3 +1,2 @@
-pub mod inventory;
-pub mod machine;
+pub mod store;
 pub mod ui_common;
