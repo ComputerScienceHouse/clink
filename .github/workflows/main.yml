@@ -1,0 +1,64 @@
+on: push
+name: Clippy check
+jobs:
+  clippy_check:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy
+          override: true
+      - uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --target=x86_64-unknown-linux-musl
+          use-cross: true
+  rustmt_check:
+    name: Code Style
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --check
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - aarch64-unknown-linux-musl
+          - x86_64-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@v1
+        name: Clone
+      - uses: actions-rs/toolchain@v1
+        name: Setup toolchain
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+      - uses: actions-rs/cargo@v1
+        name: Build
+        with:
+          use-cross: true
+          command: build
+          args: --release --all-features --target=${{ matrix.target }}
+      - name: Create Release
+        if: ${{ env.release_tag != '' }}
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "target/${{ matrix.target }}/release/clink"
+          tag: ${{ env.release_tag }}
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
+          allowUpdates: true
