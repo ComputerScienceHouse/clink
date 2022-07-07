@@ -48,18 +48,14 @@ pub fn launch(api: API) -> Result<(), APIError> {
     let cb_sink = siv.cb_sink().clone();
     thread::spawn(move || {
       let api = model.lock().unwrap().api.clone();
-      match api.get_status_for_machine(None) {
-        Ok(machine_list) => {
-          let model = Arc::clone(&model);
-          cb_sink
-            .send(Box::new(move |siv| {
-              model.lock().unwrap().machines.set(siv, Some(machine_list));
-            }))
-            .unwrap();
-          Ok(())
-        }
-        Err(err) => Err(err),
-      }
+      let machine_list = api.get_status_for_machine(None)?;
+      let model = Arc::clone(&model);
+      cb_sink
+        .send(Box::new(move |siv| {
+          model.lock().unwrap().machines.set(siv, Some(machine_list));
+        }))
+        .unwrap();
+      Ok(())
     })
   };
 
@@ -68,18 +64,14 @@ pub fn launch(api: API) -> Result<(), APIError> {
     let cb_sink = siv.cb_sink().clone();
     thread::spawn(move || {
       let api = model.lock().unwrap().api.clone();
-      match api.get_credits() {
-        Ok(credit_count) => {
-          let model = Arc::clone(&model);
-          cb_sink
-            .send(Box::new(move |siv| {
-              model.lock().unwrap().credits.set(siv, Some(credit_count));
-            }))
-            .unwrap();
-          Ok(())
-        }
-        Err(err) => Err(err),
-      }
+      let credit_count = api.get_credits()?;
+      let model = Arc::clone(&model);
+      cb_sink
+        .send(Box::new(move |siv| {
+          model.lock().unwrap().credits.set(siv, Some(credit_count));
+        }))
+        .unwrap();
+      Ok(())
     })
   };
 

@@ -255,13 +255,11 @@ impl API {
 
   fn login() {
     // Get credentials
-    let username: String = match std::env::var("CLINK_USERNAME") {
-      Ok(username) => username,
-      Err(_) => match get_current_username() {
-        Some(username) => username.into_string().unwrap(),
-        None => std::env::var("USER").expect("Couldn't determine username"),
-      },
-    };
+    let username: String = std::env::var("CLINK_USERNAME")
+      .ok()
+      .or_else(|| get_current_username().and_then(|username| username.into_string().ok()))
+      .or_else(|| std::env::var("USER").ok())
+      .expect("Couldn't determine username");
 
     // Start kinit, ready to get password from pipe
     let mut process = Command::new("kinit")
