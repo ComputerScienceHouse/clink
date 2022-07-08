@@ -32,6 +32,11 @@ struct ErrorResponse {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+struct MessageResponse {
+  message: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
 pub struct DrinkList {
   pub machines: Vec<Machine>,
   pub message: String,
@@ -196,10 +201,14 @@ impl API {
       },
       _ => {
         let text = response.text().map_err(|_| APIError::BadFormat)?;
+        let text_ref = &text;
         Err(APIError::ServerError(
           response.effective_uri().cloned(),
           serde_json::from_str::<ErrorResponse>(&text)
             .map(|body| body.error)
+            .or_else(move |_| {
+              serde_json::from_str::<MessageResponse>(text_ref).map(|body| body.message)
+            })
             .unwrap_or(text),
         ))
       }
