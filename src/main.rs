@@ -11,6 +11,9 @@ mod ui;
 struct Cli {
   #[clap(subcommand)]
   command: Option<Subcommands>,
+  /// API base URL to use
+  #[clap(value_parser, default_value = "https://drink.csh.rit.edu", long)]
+  api: String,
 }
 
 #[derive(Subcommand)]
@@ -52,7 +55,7 @@ fn main() -> ExitCode {
 }
 
 fn process_command(cli: Cli) -> Result<(), api::APIError> {
-  let mut api = api::API::new();
+  let mut api = api::API::new(cli.api);
   match cli.command {
     Some(Drop { machine, slot }) => commands::drop::drop(&mut api, machine, slot),
     Some(List { machine }) => commands::list::list(&mut api, machine),
