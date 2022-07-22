@@ -1,4 +1,4 @@
-use clap::{command, Arg, ArgMatches, Command};
+use clap::{Parser, Subcommand};
 use std::process::ExitCode;
 
 pub mod api;
@@ -6,37 +6,41 @@ pub mod commands;
 
 mod ui;
 
+#[derive(Parser)]
+#[clap(author, version, about, long_about = None)]
+struct Cli {
+  #[clap(subcommand)]
+  command: Option<Subcommands>,
+}
+
+#[derive(Subcommand)]
+enum Subcommands {
+  /// Drops a drink
+  Drop {
+    /// Machine to drop from
+    #[clap(value_parser)]
+    machine: String,
+    /// Slot to drop from
+    #[clap(value_parser)]
+    slot: u8,
+  },
+  /// Lists available drinks
+  List {
+    /// Machine whose contents should be shown (if not specified, all will be shown)
+    #[clap(value_parser)]
+    machine: Option<String>,
+  },
+  /// Prints the number of credits in your account
+  Credits,
+  /// Generates an API token (Plumbing)
+  Token,
+}
+
+use crate::Subcommands::*;
+
 fn main() -> ExitCode {
-  let matches = command!("clink")
-    .about("Drops drinks from CSH vending machines")
-    .subcommand(
-      Command::new("list").about("Display available slots").arg(
-        Arg::new("machine")
-          .index(1)
-          .help("Which machine should be listed?")
-          .required(false),
-      ),
-    )
-    .subcommand(Command::new("credits").about("Prints the number of credits in your account"))
-    .subcommand(Command::new("token").about("Generates an API token (Plumbing)"))
-    .subcommand(
-      Command::new("drop")
-        .about("Drops a drink")
-        .arg(
-          Arg::new("machine")
-            .index(1)
-            .help("Machine to drop from")
-            .required(true),
-        )
-        .arg(
-          Arg::new("slot")
-            .index(2)
-            .help("Slot to drop from")
-            .required(true),
-        ),
-    )
-    .get_matches();
-  let result = process_command(matches);
+  let cli = Cli::parse();
+  let result = process_command(cli);
   match result {
     Ok(_) => 0,
     Err(err) => {
@@ -47,17 +51,13 @@ fn main() -> ExitCode {
   .into()
 }
 
-fn process_command(matches: ArgMatches) -> Result<(), api::APIError> {
+fn process_command(cli: Cli) -> Result<(), api::APIError> {
   let mut api = api::API::new();
-  if let Some(matches) = matches.subcommand_matches("list") {
-    commands::list::list(matches, &mut api)
-  } else if let Some(matches) = matches.subcommand_matches("drop") {
-    commands::drop::drop(matches, &mut api)
-  } else if let Some(matches) = matches.subcommand_matches("credits") {
-    commands::credits::credits(matches, &mut api)
-  } else if let Some(matches) = matches.subcommand_matches("token") {
-    commands::token::token(matches, &mut api)
-  } else {
-    ui::ui_common::launch(api)
+  match cli.command {
+    Some(Drop { machine, slot }) => commands::drop::drop(&mut api, machine, slot),
+    Some(List { machine }) => commands::list::list(&mut api, machine),
+    Some(Credits) => commands::credits::credits(&mut api),
+    Some(Token) => commands::token::token(&mut api),
+    None => ui::ui_common::launch(api),
   }
 }
