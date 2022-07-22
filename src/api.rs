@@ -312,10 +312,6 @@ impl API {
     Ok(credit_response.user.drinkBalance)
   }
 
-  pub fn get_machine_status(&self) -> Result<DrinkList, APIError> {
-    self.get_status_for_machine(None)
-  }
-
   pub fn get_status_for_machine(&self, machine: Option<&str>) -> Result<DrinkList, APIError> {
     self.authenticated_request(
       Request::get(format!(
