@@ -1,9 +1,8 @@
-use clap::ArgMatches;
-
 use crate::api::{APIError, API};
 
-pub fn list(matches: &ArgMatches, api: &mut API) -> Result<(), APIError> {
-  let drinks = api.get_status_for_machine(matches.value_of("machine"))?;
+pub fn list(api: &mut API, machine: Option<String>) -> Result<(), APIError> {
+  println!("Chom: {:?}", machine.as_deref());
+  let drinks = api.get_status_for_machine(machine.as_deref())?;
 
   for machine in drinks.machines {
     println!();

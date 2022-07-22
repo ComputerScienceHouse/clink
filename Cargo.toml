@@ -1,5 +1,6 @@
 [package]
 name = "clink"
+description = "A CLI client for the Computer Science House internet-connected vending machines!"
 authors = ["Mary Strodl <mstrodl@csh.rit.edu>", "Willard Nilges <wilnil@csh.rit.edu>"]
 version = "0.3.2"
 edition = "2021"
@@ -8,13 +9,13 @@ edition = "2021"
 
 [dependencies]
 url = "2.2.2"
-serde_json = "1.0.71"
-serde = { version = "1.0.130", features = ["derive"] }
-http = "0.2.5"
-rpassword = "6.0.1"
+serde_json = "1.0.82"
+serde = { version = "1.0.140", features = ["derive"] }
+http = "0.2.8"
+rpassword = "7.0.0"
 users = "0.11.0"
-clap = { version = "3.1.6", features = ["cargo"] }
-isahc = { version = "1.6.0", features = ["json", "spnego", "static-ssl"] }
+clap = { version = "3.2.14", features = ["cargo", "derive"] }
+isahc = { version = "1.7.2", features = ["json", "spnego", "static-ssl"] }
 cursive = { version = "0.18.0", features = ["crossterm-backend"], default-features = false }
 uuid = { version = "1.1.2", features = ["v4"] }
 
