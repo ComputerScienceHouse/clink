@@ -15,6 +15,7 @@ use users::get_current_username;
 
 pub struct API {
   token: Arc<Mutex<Option<String>>>,
+  api_base_url: String,
 }
 
 #[derive(Debug)]
@@ -139,7 +140,7 @@ impl fmt::Display for APIError {
 
 impl Default for API {
   fn default() -> Self {
-    Self::new()
+    Self::new("https://drink.csh.rit.edu".to_string())
   }
 }
 
@@ -161,16 +162,18 @@ impl Clone for API {
   fn clone(&self) -> Self {
     Self {
       token: Arc::clone(&self.token),
+      api_base_url: self.api_base_url.clone(),
     }
   }
 }
 
 impl API {
-  pub fn new() -> API {
+  pub fn new(api_base_url: String) -> API {
     // We should find a way to spin this off in a thread
     // api.get_token().ok();
     API {
       token: Arc::new(Mutex::new(None)),
+      api_base_url,
     }
   }
   fn authenticated_request<O, I>(
@@ -217,7 +220,7 @@ impl API {
   pub fn drop(&self, machine: String, slot: u8) -> Result<i64, APIError> {
     self
       .authenticated_request::<DropResponse, _>(
-        Request::post("https://drink.csh.rit.edu/drinks/drop"),
+        Request::post(format!("{}/drinks/drop", self.api_base_url)),
         APIBody::Json(DropRequest { machine, slot }),
       )
       .map(|drop| drop.drinkBalance)
@@ -301,8 +304,8 @@ impl API {
     )?;
     let credit_response: CreditResponse = self.authenticated_request(
       Request::get(format!(
-        "https://drink.csh.rit.edu/users/credits?uid={}",
-        user.preferred_username
+        "{}/users/credits?uid={}",
+        self.api_base_url, user.preferred_username
       )),
       APIBody::NoBody as APIBody<serde_json::Value>,
     )?;
@@ -316,7 +319,8 @@ impl API {
   pub fn get_status_for_machine(&self, machine: Option<&str>) -> Result<DrinkList, APIError> {
     self.authenticated_request(
       Request::get(format!(
-        "https://drink.csh.rit.edu/drinks{}",
+        "{}/drinks{}",
+        self.api_base_url,
         match machine {
           Some(machine) => format!("?machine={}", machine),
           None => "".to_string(),
