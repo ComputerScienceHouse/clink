@@ -1,5 +1,5 @@
 <center>
-<img src="https://user-images.githubusercontent.com/48024900/193433123-a2e0ca6c-1f9c-4c40-a6c9-e6b8840d0834.svg" alt="clink">
+<img src="https://user-images.githubusercontent.com/48024900/194197157-5a8d9200-c66a-42d1-8ca5-782a81315469.png" alt="clink">
 </center>
 
 Clink is a command line interface for ordering drinks from any of the vending machines on floor.
