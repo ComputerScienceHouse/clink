@@ -39,6 +39,7 @@ enum Subcommands {
   Token,
 }
 
+use crate::api::APIError;
 use crate::Subcommands::*;
 
 fn main() -> ExitCode {
@@ -46,6 +47,7 @@ fn main() -> ExitCode {
   let result = process_command(cli);
   match result {
     Ok(_) => 0,
+    Err(APIError::LoginAborted) => 0,
     Err(err) => {
       eprintln!("Error: {}", err);
       1
@@ -55,7 +57,7 @@ fn main() -> ExitCode {
 }
 
 fn process_command(cli: Cli) -> Result<(), api::APIError> {
-  let mut api = api::API::new(cli.api);
+  let mut api = api::API::new(cli.api, Box::new(api::API::default_password_prompt));
   match cli.command {
     Some(Drop { machine, slot }) => commands::drop::drop(&mut api, machine, slot),
     Some(List { machine }) => commands::list::list(&mut api, machine),

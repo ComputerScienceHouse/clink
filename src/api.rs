@@ -5,9 +5,10 @@ use rpassword::prompt_password;
 use serde::{de, Deserialize, Serialize};
 use serde_json;
 use std::fmt;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::ops::DerefMut;
 use std::process::{Command, Stdio};
+use std::sync::mpsc::channel;
 use std::sync::Arc;
 use std::sync::Mutex;
 use url::Url;
@@ -16,6 +17,7 @@ use users::get_current_username;
 pub struct API {
   token: Arc<Mutex<Option<String>>>,
   api_base_url: String,
+  password_function: Arc<Mutex<Box<PasswordFunction>>>,
 }
 
 #[derive(Debug)]
@@ -25,6 +27,7 @@ pub enum APIError {
   HTTPError(http::Error),
   IsahcError(isahc::Error),
   ServerError(Option<Uri>, String),
+  LoginAborted,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -134,19 +137,31 @@ impl fmt::Display for APIError {
       ),
       APIError::HTTPError(err) => write!(f, "HTTPError: {}", err),
       APIError::IsahcError(err) => write!(f, "IsahcError: {}", err),
+      APIError::LoginAborted => write!(f, "LoginAborted"),
     }
   }
 }
 
 impl Default for API {
   fn default() -> Self {
-    Self::new("https://drink.csh.rit.edu".to_string())
+    Self::new(
+      "https://drink.csh.rit.edu".to_string(),
+      Box::new(API::default_password_prompt),
+    )
   }
 }
 
 enum APIBody<T: Serialize> {
   Json(T),
   NoBody,
+}
+
+type TryPasswordFn = dyn Fn(String) -> Result<PasswordResult, APIError> + Send + 'static;
+type PasswordFunction = dyn Fn(String, Box<TryPasswordFn>) + Send + 'static;
+
+pub struct PasswordResult {
+  pub message: String,
+  pub success: bool,
 }
 
 impl<T: Serialize> From<APIBody<T>> for isahc::Body {
@@ -163,17 +178,19 @@ impl Clone for API {
     Self {
       token: Arc::clone(&self.token),
       api_base_url: self.api_base_url.clone(),
+      password_function: Arc::clone(&self.password_function),
     }
   }
 }
 
 impl API {
-  pub fn new(api_base_url: String) -> API {
+  pub fn new(api_base_url: String, password_function: Box<PasswordFunction>) -> API {
     // We should find a way to spin this off in a thread
     // api.get_token().ok();
     API {
       token: Arc::new(Mutex::new(None)),
       api_base_url,
+      password_function: Arc::new(Mutex::new(password_function)),
     }
   }
   fn authenticated_request<O, I>(
@@ -236,7 +253,7 @@ impl API {
         let location = match response.headers().get("Location") {
           Some(location) => location,
           None => {
-            API::login();
+            self.login()?;
             return self.take_token(token);
           }
         };
@@ -265,7 +282,34 @@ impl API {
     self.take_token(token.deref_mut())
   }
 
-  fn login() {
+  pub fn default_password_prompt(username: String, try_password: Box<TryPasswordFn>) {
+    loop {
+      let password = prompt_password(format!("Password for {username}: ")).unwrap();
+      match (try_password)(password) {
+        Ok(PasswordResult {
+          success: false,
+          message,
+        }) => {
+          print!("Login failed: {message}");
+        }
+        Ok(PasswordResult {
+          success: true,
+          message: _,
+        }) => {
+          return;
+        }
+        Err(_) => {
+          return;
+        }
+      }
+    }
+  }
+
+  pub fn set_password_prompt(&mut self, prompt: Box<PasswordFunction>) {
+    self.password_function = Arc::new(Mutex::new(prompt));
+  }
+
+  fn login(&self) -> Result<(), APIError> {
     // Get credentials
     let username: String = std::env::var("CLINK_USERNAME")
       .ok()
@@ -273,27 +317,42 @@ impl API {
       .or_else(|| std::env::var("USER").ok())
       .expect("Couldn't determine username");
 
-    // Start kinit, ready to get password from pipe
-    let mut process = Command::new("kinit")
-      .arg(format!("{}@CSH.RIT.EDU", username))
-      .stdin(Stdio::piped())
-      .stdout(Stdio::null())
-      .spawn()
-      .unwrap();
-
+    let password_function = self.password_function.lock().unwrap();
+    let (tx_password, rx_password) = channel();
     // Get password
-    let password = prompt_password(format!("Password for {}: ", username)).unwrap();
-
-    // Pipe password into the prompt that "comes up"
-    process
-      .stdin
-      .as_ref()
-      .unwrap()
-      .write_all(password.as_bytes())
-      .unwrap();
-
-    // Wait for login to be complete before continuting
-    process.wait().unwrap();
+    (password_function)(
+      username.clone(),
+      Box::new(move |password| {
+        // Start kinit, ready to get password from pipe
+        let mut process = Command::new("kinit")
+          .arg(format!("{}@CSH.RIT.EDU", username))
+          .stdin(Stdio::piped())
+          .stdout(Stdio::null())
+          .stderr(Stdio::piped())
+          .spawn()
+          .unwrap();
+        process
+          .stdin
+          .as_ref()
+          .unwrap()
+          .write_all(password.as_bytes())
+          .unwrap();
+        let success = process.wait().unwrap().success();
+        if success {
+          tx_password.send(()).unwrap();
+        }
+        let mut output = "".to_string();
+        process.stderr.unwrap().read_to_string(&mut output).unwrap();
+        Ok(PasswordResult {
+          success,
+          message: output,
+        })
+      }),
+    );
+    match rx_password.recv() {
+      Ok(_) => Ok(()),
+      Err(_) => Err(APIError::LoginAborted),
+    }
   }
 
   pub fn get_credits(&self) -> Result<i64, APIError> {

@@ -14,9 +14,10 @@ pub struct Store<T> {
   name: String,
 }
 
+type ListenerFn<'a, T> = Box<dyn Fn(&mut BoxedView, &T, &T) + 'a>;
 pub struct InnerListenerView<'a, T> {
   view: Rc<RefCell<BoxedView>>,
-  listener: Box<dyn Fn(&mut BoxedView, &T, &T) + 'a>,
+  listener: ListenerFn<'a, T>,
 }
 
 pub struct ListenerView<'a, T> {

@@ -9,30 +9,104 @@ use cursive::utils::span::SpannedString;
 use cursive::view::{Margins, Offset, Position};
 
 use cursive::views::{
-  Dialog, DialogFocus, Layer, OnEventView, PaddedView, SelectView, ShadowView, TextView,
+  Dialog, DialogFocus, EditView, Layer, LinearLayout, OnEventView, PaddedView, SelectView,
+  ShadowView, TextView,
 };
 use cursive::{Cursive, CursiveRunnable};
+use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
 struct ModelData {
-  credits: Store<Option<i64>>,
-  machines: Store<Option<DrinkList>>,
+  credits: Mutex<Store<Option<i64>>>,
+  machines: Mutex<Store<Option<DrinkList>>>,
   api: API,
 }
 
 // This should really get cleaned up:
-type Model = Arc<Mutex<ModelData>>;
+type Model = Arc<ModelData>;
 
 /// Entrypoint, CLI will call this when we start up!
-pub fn launch(api: API) -> Result<(), APIError> {
-  api.get_token()?;
+pub fn launch(mut api: API) -> Result<(), APIError> {
   let mut siv = cursive::default();
-  let model = Arc::new(Mutex::new(ModelData {
-    credits: Store::new(None),
-    machines: Store::new(None),
+  let (tx_credential, rx_credential) = channel();
+  let tx_credential = Arc::new(Mutex::new(tx_credential));
+  let tx_credential_clone = Arc::clone(&tx_credential);
+  {
+    let cb_sink = siv.cb_sink().clone();
+    let (tx_prompt, rx_prompt) = channel();
+    let (tx_close, rx_close) = channel();
+    let is_quit = Arc::new(Mutex::new(false));
+    api.set_password_prompt(Box::new(move |username, password_cb| {
+      if *is_quit.lock().unwrap() {
+        return;
+      }
+      tx_prompt.send(username).unwrap();
+      loop {
+        match rx_credential.recv() {
+          Ok(Some(password)) => {
+            let result = (password_cb)(password);
+            let success = result
+              .as_ref()
+              .map(|result| result.success)
+              .unwrap_or(false);
+            tx_close.send(result).unwrap();
+            if success {
+              break;
+            }
+          }
+          Ok(None) | Err(_) => {
+            *is_quit.lock().unwrap() = true;
+            tx_close.send(Err(APIError::LoginAborted)).unwrap();
+            break;
+          }
+        }
+      }
+    }));
+    let rx_close = Arc::new(Mutex::new(rx_close));
+    thread::spawn(move || {
+      while let Ok(username) = rx_prompt.recv() {
+        let rx_close = Arc::clone(&rx_close);
+        let tx_credential = Arc::clone(&tx_credential);
+        cb_sink
+          .send(Box::new(move |siv| {
+            siv.add_layer(
+              Dialog::around(
+                LinearLayout::vertical()
+                  .child(TextView::new("Please enter your password").with_name("password_message"))
+                  .child(EditView::new().secret().on_submit(move |siv, password| {
+                    tx_credential
+                      .lock()
+                      .unwrap()
+                      .send(Some(password.to_string()))
+                      .unwrap();
+                    if let Ok(result) = rx_close.lock().unwrap().recv().unwrap() {
+                      if result.success {
+                        siv.pop_layer();
+                      } else {
+                        siv.call_on_name("password_message", move |view: &mut TextView| {
+                          view.set_content(result.message);
+                        });
+                      }
+                    }
+                  })),
+              )
+              .title(format!("Enter login for {}", username))
+              .button("Quit", |siv| {
+                siv.quit();
+              }),
+            );
+          }))
+          .unwrap();
+      }
+    });
+  }
+  // api.get_token()?;
+  let model = Arc::new(ModelData {
+    credits: Mutex::new(Store::new(None)),
+    machines: Mutex::new(Store::new(None)),
     api,
-  }));
+  });
 
   // Nice to have
   siv.add_global_callback('q', |s| s.quit());
@@ -47,12 +121,11 @@ pub fn launch(api: API) -> Result<(), APIError> {
     let model = Arc::clone(&model);
     let cb_sink = siv.cb_sink().clone();
     thread::spawn(move || {
-      let api = model.lock().unwrap().api.clone();
-      let machine_list = api.get_status_for_machine(None)?;
+      let machine_list = model.api.get_status_for_machine(None)?;
       let model = Arc::clone(&model);
       cb_sink
         .send(Box::new(move |siv| {
-          model.lock().unwrap().machines.set(siv, Some(machine_list));
+          model.machines.lock().unwrap().set(siv, Some(machine_list));
         }))
         .unwrap();
       Ok(())
@@ -63,12 +136,12 @@ pub fn launch(api: API) -> Result<(), APIError> {
     let model = Arc::clone(&model);
     let cb_sink = siv.cb_sink().clone();
     thread::spawn(move || {
-      let api = model.lock().unwrap().api.clone();
+      let api = &model.api;
       let credit_count = api.get_credits()?;
       let model = Arc::clone(&model);
       cb_sink
         .send(Box::new(move |siv| {
-          model.lock().unwrap().credits.set(siv, Some(credit_count));
+          model.credits.lock().unwrap().set(siv, Some(credit_count));
         }))
         .unwrap();
       Ok(())
@@ -77,6 +150,7 @@ pub fn launch(api: API) -> Result<(), APIError> {
 
   siv.run();
 
+  tx_credential_clone.lock().unwrap().send(None).unwrap();
   status_handle.join().unwrap()?;
   credits_handle.join().unwrap()?;
   Ok(())
@@ -102,7 +176,7 @@ fn credit_count(model: Model, siv: &mut CursiveRunnable) -> Margins {
   let credit_text = TextView::empty();
   let mut listener_view = ListenerView::new(
     credit_text,
-    &model.lock().unwrap().credits,
+    &model.credits.lock().unwrap(),
     |view, _old_credits, credits| {
       let credit_text = view.downcast_mut::<TextView>().unwrap();
       match credits {
@@ -112,9 +186,9 @@ fn credit_count(model: Model, siv: &mut CursiveRunnable) -> Margins {
     },
   );
   model
+    .credits
     .lock()
     .unwrap()
-    .credits
     .use_store(siv, &mut listener_view);
   let mut dialog = Dialog::around(listener_view).padding_lrtb(0, 0, 0, 0);
   let mut size = dialog.required_size(siv.screen_size());
@@ -142,7 +216,7 @@ fn machine_list(model: Model, siv: &mut CursiveRunnable, padding: Margins) {
   let cb_sink = siv.cb_sink().clone();
   let mut listener_view = ListenerView::new(
     select,
-    &model.lock().unwrap().machines,
+    &model.machines.lock().unwrap(),
     move |view, old_list, machine_list| {
       // panic rationale: failing this downcast indicates a bug in the program
       let select = view.downcast_mut::<SelectView<Machine>>().unwrap();
@@ -178,9 +252,9 @@ fn machine_list(model: Model, siv: &mut CursiveRunnable, padding: Margins) {
     },
   );
   model
+    .machines
     .lock()
     .unwrap()
-    .machines
     .use_store(siv, &mut listener_view);
 
   let listener_view = OnEventView::new(listener_view)
@@ -222,7 +296,7 @@ fn item_list(model: Model, siv: &mut Cursive, machine_id: u64, padding: Margins)
     });
   let mut listener_view = ListenerView::new(
     select,
-    &model.lock().unwrap().machines,
+    &model.machines.lock().unwrap(),
     move |view, _old_list, machine_list| {
       let event_view = view
         .downcast_mut::<OnEventView<SelectView<Slot>>>()
@@ -256,13 +330,13 @@ fn item_list(model: Model, siv: &mut Cursive, machine_id: u64, padding: Margins)
     },
   );
   model
+    .machines
     .lock()
     .unwrap()
-    .machines
     .use_store(siv, &mut listener_view);
 
   let machine_name = {
-    let machines = &model.lock().unwrap().machines;
+    let machines = &model.machines.lock().unwrap();
     let machines = machines.get().as_ref().unwrap();
     let machine = machines
       .machines
@@ -288,9 +362,9 @@ fn item_list(model: Model, siv: &mut Cursive, machine_id: u64, padding: Margins)
 fn drop_drink(model: Model, siv: &mut Cursive, slot: &Slot) {
   let machine_id = slot.machine;
   let machine_id = model
+    .machines
     .lock()
     .unwrap()
-    .machines
     .get()
     .as_ref()
     .unwrap()
@@ -305,15 +379,15 @@ fn drop_drink(model: Model, siv: &mut Cursive, slot: &Slot) {
   let cb_sink = siv.cb_sink().clone();
   let slot_number = slot.number;
   thread::spawn(move || {
-    let api = model.lock().unwrap().api.clone();
-    match api.drop(machine_id, slot_number) {
+    match model.api.drop(machine_id, slot_number) {
       Ok(credits) => {
         let message = format!("Enjoy! You now have {} credits", credits);
+        let api = &model.api;
         let model = Arc::clone(&model);
         let model_ref = Arc::clone(&model);
         cb_sink
           .send(Box::new(move |siv| {
-            model.lock().unwrap().credits.set(siv, Some(credits));
+            model.credits.lock().unwrap().set(siv, Some(credits));
             siv.pop_layer();
             siv.add_layer(
               Dialog::around(TextView::new(message))
@@ -327,7 +401,7 @@ fn drop_drink(model: Model, siv: &mut Cursive, slot: &Slot) {
         let status = api.get_status_for_machine(None).unwrap();
         cb_sink
           .send(Box::new(move |siv| {
-            model_ref.lock().unwrap().machines.set(siv, Some(status));
+            model_ref.machines.lock().unwrap().set(siv, Some(status));
           }))
           .unwrap();
       }
