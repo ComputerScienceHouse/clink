@@ -195,7 +195,7 @@ fn credit_count(model: Model, siv: &mut CursiveRunnable) -> Margins {
   let offset_y = 2;
   siv.screen_mut().add_transparent_layer_at(
     Position::new(Offset::Center, Offset::Parent(offset_y)),
-    dialog,
+    Layer::new(dialog),
   );
 
   size = size.map_y(move |y| y + (offset_y as usize) + 1);
