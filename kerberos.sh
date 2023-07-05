@@ -17,9 +17,13 @@ export ac_cv_printf_positional=yes
 
 _configure () {
   ecode=0
+  prefix=/usr/local/${triple}
+  if [ $triple == "x86_64-linux-gnu" ]; then
+    prefix=/usr/local
+  fi
   AR=${triple}-ar CC=${triple}-gcc CPP=${triple}-cpp \
     CXX=${triple}-g++ LD=${triple}-ld ./configure \
-    --prefix=/usr/local/${triple} \
+    --prefix=${prefix} \
     --host=${triple} \
     --disable-shared \
     --enable-static \
